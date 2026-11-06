@@ -79,9 +79,11 @@
 /* One continuous pale-blue sheet: the selected tab covers the panel's top border. */
 .report-workspace { position:relative; min-width:0; }
 .report-tab-toolbar { display:flex; align-items:stretch; gap:8px; max-width:100%; min-width:0; position:relative; z-index:1; margin-bottom:-1px; }
-.report-tabs { display:flex; flex:1 1 0%; gap:4px; min-width:0; max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; padding:4px 3px 0; scroll-padding-inline:3px; -webkit-overflow-scrolling:touch; }
+.report-tabs { display:flex; flex:1 1 0%; gap:0; min-width:0; max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; padding:4px 0 0; scroll-padding-inline:0; -webkit-overflow-scrolling:touch; }
 .report-tabs::-webkit-scrollbar { display:none; }
 .report-tab { display:flex; align-items:center; justify-content:center; gap:0; flex:1 0 44px; min-width:44px; max-width:none; min-height:48px; padding:6px 3px; border:1px solid #b6c8d8; border-radius:12px 12px 0 0; background:#eff6fb; color:#415a70; font-size:14px; text-align:left; }
+/* Adjacent tabs share one border without overlapping their 44 px touch targets. */
+.report-tab + .report-tab { border-left-width:0; }
 .report-tab[aria-selected="true"] { border-color:#b6c8d8; border-bottom-color:#deedf5; background:#deedf5; color:#233b50; font-weight:700; box-shadow:none; }
 .report-tab[aria-selected="false"]:hover { background:#e8f2f9; }
 .report-tab:focus-visible { outline-offset:-3px; }
@@ -189,3 +191,52 @@ body{--muted:#5d6a61}.eyebrow,.subheading,.card-meta,.field small,.rate-note,.re
 .mobile-nav button { background:transparent; color:#626262; }
 .mobile-nav button.active { background:#e9e9e9; color:#262626; border-radius:10px; font-weight:700; }
 .mobile-nav button:focus-visible { outline-color:#555; }
+
+/* Keep routine report entry compact while preserving long and multiline notes. */
+#report-form .entry-customer-header { padding-bottom:8px; }
+#report-form .entry-fields>.category-block:first-child { margin-top:0; padding-top:8px; }
+#report-form .category-notes textarea { min-height:44px; height:44px; padding-block:8px; line-height:1.4; white-space:pre; overflow-wrap:normal; overflow-x:auto; resize:vertical; }
+
+/* Weight, captured rate and calculated total share one row at every width. */
+.category-block .report-measure-grid { grid-template-columns:minmax(0,1fr); gap:6px; }
+.measure-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; gap:8px; min-width:0; }
+.measure-metrics>div { min-width:0; }
+.measure-metrics .field { margin:0; gap:6px; }
+.measure-metrics .field-label { display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-height:36px; font-size:13px; line-height:1.3; white-space:nowrap; }
+.measure-metrics .field-label small { font-size:11px; font-weight:400; }
+.measure-metrics input,.measure-metrics .measure-value { box-sizing:border-box; width:100%; min-width:0; min-height:48px; border:1px solid #dce3d7; border-radius:8px; padding:11px 6px; font-size:16px; line-height:24px; color:var(--ink); background:#fff; font-variant-numeric:tabular-nums; }
+.measure-metrics .measure-value { display:block; overflow-x:auto; white-space:nowrap; }
+@media(max-width:360px) { .measure-metrics { gap:6px; } .measure-metrics .field-label { font-size:12px; } }
+
+/* Historical prices follow each saved weight; muted text still meets AA contrast. */
+.report-info .record-rate { display:inline; color:#626c72; font-size:12px; font-weight:400; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+
+/* Two rows keep Other beside Total and historical prices readable on phones. */
+#summary-list .summary-values { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:10px; }
+#summary-list .summary-values>div { min-width:0; padding:10px 8px; }
+#summary-list .summary-values dt { color:var(--ink); font-weight:650; }
+#summary-list .summary-values dd { font-size:18px; line-height:1.4; }
+#summary-list .summary-values small { display:inline; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }
+.summary-saved-rate { margin:5px 0; color:#626c72; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+#summary-list .summary-total { border:2px solid var(--green); background:var(--page-soft); }
+#summary-list .summary-total dt,#summary-list .summary-total dd { color:var(--green); font-weight:750; }
+.summary-equation { margin-top:8px; border-top:1px solid var(--line); padding-top:10px; }
+.summary-equation-parts { display:flex; align-items:baseline; justify-content:flex-end; flex-wrap:wrap; gap:4px 7px; margin:0; font-size:15px; font-variant-numeric:tabular-nums; }
+.summary-equation-parts>span { min-width:0; overflow-wrap:anywhere; }
+.summary-equation-plus { color:var(--muted); }
+.summary-equation-result { margin:7px 0 0; text-align:right; color:var(--green); font-size:21px; font-weight:750; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.summary-rate-details { margin-top:14px; font-size:13px; line-height:1.6; }
+.summary-rate-details summary { min-height:44px; display:flex; align-items:center; cursor:pointer; color:var(--green); }
+.summary-rate-details summary::before { content:'▸'; margin-right:6px; }
+.summary-rate-details[open] summary::before { content:'▾'; }
+.summary-rate-details h3 { margin:8px 0 4px; font-size:13px; }
+.summary-rate-details ul { margin:0; padding-left:18px; }
+.summary-rate-details li { overflow-wrap:anywhere; }
+@media(max-width:420px) { #summary-list .summary-values { gap:5px; } #summary-list .summary-values>div { padding:8px 5px; } #summary-list .summary-values dd { font-size:15px; } #summary-list .summary-values dt { font-size:12px; } .summary-saved-rate { font-size:11px; } .summary-equation-parts { font-size:14px; } }
+
+.summary-unused { font-size:11px; color:var(--muted); }
+
+/* Native dialogs fade in without delaying focus, controls or their close path. */
+dialog[open]:not(.available-update-dialog) { animation:dialog-fade-in 160ms ease-out; }
+@keyframes dialog-fade-in { from { opacity:0; } to { opacity:1; } }
+@media(prefers-reduced-motion:reduce) { dialog[open]:not(.available-update-dialog) { animation:none; } }
