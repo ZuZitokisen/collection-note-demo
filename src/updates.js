@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.11';
-export const RELEASE_CHANGES = ["出力で社印の透過PNGを選び、赤色で請求書へ配置", "社印は選んだブラウザ内だけで使用。任意保存・解除に対応", "社印変更後の古いPDF保存リンクを無効化し、報告データを維持"];
+export const APP_VERSION = '0.5.12';
+export const RELEASE_CHANGES = ["社印を選ばず、低解像度の標準印影を請求書へ自動配置", "赤色・指定位置・文字の背面を維持し、PDFにも反映", "画像を差し替える操作と読込中・エラー表示を改善", "取引先タブと設定の選択行の濃い装飾帯を削除"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
