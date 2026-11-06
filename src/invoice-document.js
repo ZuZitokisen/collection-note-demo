@@ -75,7 +75,7 @@ function invoicePage(view, hasNotes) {
     text('issue-date', eraDate(view.issueDate), 157, 33, { align: 'right' }),
     ...identityCells(view),
     text('total-label', 'ご請求金額　¥', left, 100),
-    text('total-top', '未確定', 81, 100, { align: 'right' })
+    text('total-top', '—', 81, 100, { align: 'right' })
   ];
   const rules = [line(left, 102, 82, 102), line(left, 114, right, 114), line(left, 191, right, 191), line(98, 199, right, 199)];
   const headers = ['品名', '単価', '数量', '単位', '価格'];
@@ -93,13 +93,13 @@ function invoicePage(view, hasNotes) {
   if (hasNotes) cells.push(text('notes-reference', '※品目・回収時の備考は別紙をご参照ください。', left, 174, { size: 2.6, maxWidth: 124 }));
   cells.push(text('subtotal-label', '参考小計（記録料金のみ）', left, 184, { size: 2.6 }),
     text('subtotal', view.recordedCharges === null ? '算出不可' : `${num(view.recordedCharges)} 円`, 92, 184, { size: 2.6, align: 'right', maxWidth: 30 }),
-    text('total-bottom-label', '合計', 99, 197), text('total-bottom', '未確定', right, 197, { align: 'right' }),
+    text('total-bottom-label', '合計', 99, 197), text('total-bottom', '—', right, 197, { align: 'right' }),
     text('tax-title', '税率別内訳', left, 205, { bold: true }),
-    text('tax-net-label', '税抜金額', left, 212), text('tax-net', '未確定', 84, 212, { align: 'right' }),
-    text('tax-label', '消費税額（計算未確定）', left, 219, { size: 2.9, maxWidth: 43 }), text('tax-value', '未確定', 84, 219, { align: 'right', size: 2.9 }),
-    text('tax-inclusive-label', '税込金額', left, 226), text('tax-inclusive', '未確定', 84, 226, { align: 'right' }),
+    text('tax-net-label', '税抜金額', left, 212), text('tax-net', '—', 84, 212, { align: 'right' }),
+    text('tax-label', '消費税額', left, 219, { size: 2.9, maxWidth: 43 }), text('tax-value', '—', 84, 219, { align: 'right', size: 2.9 }),
+    text('tax-inclusive-label', '税込金額', left, 226), text('tax-inclusive', '—', 84, 226, { align: 'right' }),
     ...bankCells(view),
-    text('draft-note', '見本：税額未確定。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
+    text('draft-note', '見本：税計算は未実装です。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
   [207, 214, 221, 228].forEach(y => rules.push(line(left, y, 85, y)));
   return { kind: 'invoice', cells, rules, seal: validateCanonicalSeal(view.seal ?? null) };
 }
