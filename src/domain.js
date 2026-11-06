@@ -1,4 +1,4 @@
-import { CUSTOMERS, PEOPLE, sampleState, clone, optionalDecimal, validateDate, monthBounds, sumField, ConflictError, ValidationError, DuplicateError } from './model.js';
+import { CUSTOMERS, PEOPLE, sampleState, clone, optionalDecimal, validateDate, localDate, monthBounds, sumField, ConflictError, ValidationError, DuplicateError } from './model.js';
 export { clone, ConflictError, ValidationError, DuplicateError };
 export const STORAGE_KEY_V3 = 'collection-report-local-prototype-v3';
 export const CATEGORIES = { combustible: '可燃', noncombustible: '不燃', other: 'その他' };
@@ -20,20 +20,21 @@ export function reportNotes(record = {}) {
   return { combustible: record.categoryNotes?.combustible ?? '', noncombustible: record.categoryNotes?.noncombustible ?? '', other: record.otherItem ?? record.categoryNotes?.other ?? '' };
 }
 function validateMemberProfile(p) {
-  if (!p || typeof p !== 'object' || Array.isArray(p) || (p.age !== null && (!Number.isInteger(p.age) || p.age < 0 || p.age > 120)) || !['', '男', '女', 'ー'].includes(p.gender) || typeof p.license !== 'string' || p.license.length > 200 || typeof p.other !== 'string' || p.other.length > 500) throw new ValidationError('プロフィールの形式が正しくありません。年齢は0〜120歳、性別は男・女・ーから選択してください。');
+  if (!p || typeof p !== 'object' || Array.isArray(p) || (p.age !== undefined && p.age !== null && (!Number.isInteger(p.age) || p.age < 0 || p.age > 120)) || !['', '男', '女', 'ー'].includes(p.gender) || typeof p.license !== 'string' || p.license.length > 1000 || typeof p.other !== 'string' || p.other.length > 500) throw new ValidationError('プロフィールの形式が正しくありません。年齢は0〜120歳、性別は男・女・ーから選択してください。');
+  if(p.birthDate!==undefined){if(typeof p.birthDate!=='string')throw new ValidationError('生年月日を確認してください。');if(p.birthDate){validateDate(p.birthDate);if(p.birthDate>localDate())throw new ValidationError('生年月日は今日以前の日付を入力してください。');}}
   return p;
 }
 function readMemberProfile(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new ValidationError('プロフィールの形式が正しくありません。');
   const age=p.age===null||p.age===undefined||p.age===''?null:(typeof p.age==='string'&&/^\d{1,3}$/.test(p.age)?Number(p.age):p.age);
-  return validateMemberProfile({age,gender:p.gender??'',license:typeof p.license==='string'?p.license.trim():p.license??'',other:typeof p.other==='string'?p.other.trim():p.other??''});
+  return validateMemberProfile({age,birthDate:p.birthDate??'',gender:p.gender??'',license:typeof p.license==='string'?p.license.trim():p.license??'',other:typeof p.other==='string'?p.other.trim():p.other??''});
 }
 function master(state, type, id) { return state.masters[type]?.find(x => x.id === id); }
 export function activeMasters(state, type) { return state.masters[type].filter(x => x.active); }
 export function displayName(state, type, id, snapshot = '') { const m = master(state, type, id); return `${snapshot || m?.name || '名称不明'}${m && !m.active ? '（×）' : ''}`; }
 function member(state, id) { const m = master(state, 'members', id); if (!m?.active) throw new ValidationError('今回操作する有効なメンバーを選択してください。'); return m; }
-function defaults() { return { enabled: { combustible: true, noncombustible: true, other: true }, rates: { combustible: 30, noncombustible: 45, other: 300 }, itemIds: ['demo-item-1', 'demo-item-2', 'demo-item-3'] }; }
-function initialMasters() { return { customers: CUSTOMERS.map(c => ({ ...c, active: true, version: 1, ...defaults() })), members: PEOPLE.map((name, i) => ({ id: `demo-member-${i+1}`, name, active: true, version: 1 })), items: Object.keys(CATEGORIES).map((category, i) => ({ id: `demo-item-${i+1}`, name: `${CATEGORIES[category]}サンプル（架空）`, category, active: true, version: 1 })) }; }
+function defaults() { return { enabled: { combustible: true, noncombustible: true, other: true }, rates: { combustible: null, noncombustible: null, other: null }, itemIds: ['demo-item-1', 'demo-item-2', 'demo-item-3'] }; }
+function initialMasters() { return { customers: CUSTOMERS.map(c => ({ ...c, active: true, version: 1, ...defaults() })), members: PEOPLE.map((name, i) => ({ id: `demo-member-${i+1}`, name, active: true, version: 1 })), items: Object.keys(CATEGORIES).map((category, i) => ({ id: `demo-item-${i+1}`, name: CATEGORIES[category], category, defaultRate: null, active: true, version: 1 })) }; }
 const numericFields = ['combustibleKg','noncombustibleKg','otherFee','combustibleRate','noncombustibleRate'];
 function validateLegacy(value) {
   if (!value || value.schema !== 2 || !Array.isArray(value.records) || !Array.isArray(value.history)) throw new ValidationError('旧データの形式を確認できません。元データは変更しません。');
@@ -54,14 +55,14 @@ export function migrateState(value) {
 export function createSampleState() {
   const s=migrateState(sampleState());
   const names=['青葉みどり商店','港町こむぎ食堂','日向ビル管理','森のまちスーパー','さくら通りオフィス','つばめ製作所','白波ビジネスホテル','こもれび菓子店','北町物流センター','あおぞらホームセンター','丘の上ベーカリー','若葉家具工房','七色イベント会館','風見カフェ','小春フラワーショップ','ひだまり集合住宅','水辺の宿','中央文具センター','つきのわ飲食館','山の手整備工場','虹ヶ丘販売所','あさひ食品加工','星の森雑貨店','駅前しおかぜ書店','若草園芸センター','木立レンタル倉庫','南町コミュニティ館','てらす共同事務所','三日月包装工場'];
-  s.masters.customers.forEach((c,i)=>{c.name=names[i]+'（架空）';c.rates={combustible:25+(i%5)*5,noncombustible:40+(i%4)*10,other:200+(i%6)*100};});
+  s.masters.customers.forEach((c,i)=>{c.name=names[i]+'（架空）';c.rates={combustible:null,noncombustible:null,other:null};});
   for(const r of s.records)r.customerName=master(s,'customers',r.customerId).name;
   for(const e of s.history)for(const r of [e.before,e.after])if(r)r.customerName=master(s,'customers',r.customerId).name;
   return validateState(s);
 }
 export function validateState(s) {
   if (!s || s.schema !== 3 || !Number.isInteger(s.revision) || s.revision < 1 || !Number.isInteger(s.masterRevision) || s.masterRevision < 1 || !Array.isArray(s.records) || !Array.isArray(s.history) || !Array.isArray(s.settingsHistory)) throw new ValidationError('保存形式が正しくありません。');
-  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'members' && m.profile !== undefined) validateMemberProfile(m.profile); if (type === 'items' && m.category !== undefined && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); } } }
+  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'members' && m.profile !== undefined) validateMemberProfile(m.profile); if(type === 'items' && m.defaultRate !== undefined){if(m.defaultRate!==null&&typeof m.defaultRate!=='number')throw new ValidationError('共通単価の形式が正しくありません。');optionalDecimal(m.defaultRate,'共通単価');} if (type === 'items' && m.category !== undefined && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); if(m.invoicePostalCode!==undefined&&(typeof m.invoicePostalCode!=='string'||m.invoicePostalCode.length>16))throw new ValidationError('郵便番号は16文字以内で入力してください。');if(m.invoiceAddress!==undefined&&(typeof m.invoiceAddress!=='string'||m.invoiceAddress.length>90||m.invoiceAddress.split('\n').length>3))throw new ValidationError('住所は90文字・3行以内で入力してください。'); } } }
   if (!activeMasters(s, 'members').length) throw new ValidationError('有効なメンバーが必要です。');
   for (const c of s.masters.customers) if(c.itemIds.some(id => !master(s,'items',id))) throw new ValidationError('設定の処分物品参照が不正です。');
   const ids = new Set();
@@ -84,13 +85,16 @@ export function saveMaster(s,type,input,{id=null,expectedVersion=null,actorId}={
   if(id && (!old || old.version!==expectedVersion)) throw new ConflictError(old??null);
   const name=text(input.name); if(s.masters[type].some(m=>m.id!==id && m.active && m.name===name)) throw new ValidationError('同じ名称が登録済みです。区別できる名称にしてください。');
   const next={id:old?.id??uid(),name,active:old?.active??true,version:(old?.version??0)+1};
-  if(type==='members'){if(input.profile!==undefined)next.profile=readMemberProfile(input.profile);else if(old?.profile!==undefined)next.profile=clone(old.profile);}
+  if(type==='members'){if(input.profile!==undefined)next.profile=readMemberProfile({...old?.profile,...input.profile});else if(old?.profile!==undefined)next.profile=clone(old.profile);}
   if(type==='items'){
+    if(input.defaultRate!==undefined)next.defaultRate=optionalDecimal(input.defaultRate,'共通単価');else if(old?.defaultRate!==undefined)next.defaultRate=old.defaultRate;
     // Old classifications remain audit data; new note candidates need no category.
     const category=input.category===undefined?old?.category:input.category;
+    if(old&&commonRateCategory(old)&&category!==old.category)throw new ValidationError('共通単価の基本区分は変更できません。');
     if(category!==undefined){if(!CATEGORIES[category])throw new ValidationError('区分が正しくありません。');if(old && old.category!==category && s.records.some(r=>Object.values(r.itemIds).includes(id)))throw new ValidationError('使用済み物品の区分は変更できません。');next.category=category;}
   }
   if(type==='customers'){
+    for(const key of ['invoicePostalCode','invoiceAddress']){const value=input[key]??old?.[key];if(value!==undefined)next[key]=String(value).replace(/\r\n?/g,'\n').split('\n').map(line=>line.trim()).join('\n').trim();}
     next.enabled=clone(input.enabled??old?.enabled??defaults().enabled);
     next.rates={};for(const k of Object.keys(CATEGORIES))next.rates[k]=optionalDecimal((input.rates??old?.rates)?.[k],`${CATEGORIES[k]}の初期値`);
     next.itemIds=[...new Set(input.itemIds??old?.itemIds??[])];
@@ -99,13 +103,26 @@ export function saveMaster(s,type,input,{id=null,expectedVersion=null,actorId}={
   return masterChange(s,type,old,next,actorId,old?'update':'create');
 }
 export function setMasterActive(s,type,id,expectedVersion,active,actorId){member(s,actorId);const m=master(s,type,id);if(!m||m.version!==expectedVersion)throw new ConflictError(m??null);if(type==='members'&&!active&&activeMasters(s,type).length===1&&m.active)throw new ValidationError('最後の有効なメンバーは削除できません。');if(active&&s.masters[type].some(x=>x.id!==id&&x.active&&x.name===m.name))throw new ValidationError('同じ名称の有効な項目があります。先に名称を区別してください。');return masterChange(s,type,m,{...m,active:!!active,version:m.version+1},actorId,active?'reactivate':'deactivate');}
-export function reportDefaults(s,customerId){const c=master(s,'customers',customerId);if(!c?.active)throw new ValidationError('有効な取引先を選択してください。');return {combustibleKg:null,noncombustibleKg:null,otherItem:'',otherFee:c.rates.other,combustibleRate:c.rates.combustible,noncombustibleRate:c.rates.noncombustible,itemIds:{combustible:'',noncombustible:'',other:''},defaultRates:clone(c.rates),priceSource:'customer-default',masterRevision:s.masterRevision};}
+// Only the three stable original category rows supply common defaults. Added
+// names stay optional item metadata; duplicating a row never reassigns a category.
+export function commonRateCategory(item){const i=['combustible','noncombustible','other'].indexOf(item?.category);return i>=0&&item.id===`demo-item-${i+1}`?item.category:null;}
+export function commonRates(s){return Object.fromEntries(Object.keys(CATEGORIES).map(k=>{const row=s.masters.items.find(m=>m.active&&commonRateCategory(m)===k);return [k,row?.defaultRate??null];}));}
+export function effectiveRates(s,customerId){const c=master(s,'customers',customerId);if(!c?.active)throw new ValidationError('有効な取引先を選択してください。');const common=commonRates(s);return Object.fromEntries(Object.keys(CATEGORIES).map(k=>[k,c.rates[k]??common[k]]));}
+export function reportDefaults(s,customerId){const rates=effectiveRates(s,customerId);return {combustibleKg:null,noncombustibleKg:null,otherItem:'',otherFee:rates.other,combustibleRate:rates.combustible,noncombustibleRate:rates.noncombustible,itemIds:{combustible:'',noncombustible:'',other:''},defaultRates:clone(rates),priceSource:'configured-default',masterRevision:s.masterRevision};}
+export function upgradeInitialItems(value){
+ const s=validateState(value),changed=s.masters.items.filter(m=>commonRateCategory(m)&&m.version===1&&m.name===`${CATEGORIES[m.category]}サンプル（架空）`);
+ if(!changed.length)return s;
+ const next=clone(s);for(const m of next.masters.items)if(changed.some(x=>x.id===m.id)){m.name=CATEGORIES[m.category];m.version++;}
+ next.revision++;next.masterRevision++;
+ next.localMigrations=[...(next.localMigrations??[]),{id:'plain-initial-item-names-v0510',timestamp:stamp(),items:changed.map(m=>({id:m.id,before:m.name,after:CATEGORIES[m.category]}))}];
+ return validateState(next);
+}
 function fields(s,input,current=null){
   const c=master(s,'customers',input.customerId);if(!c || (!c.active&&current?.customerId!==c.id))throw new ValidationError('有効な取引先を選択してください。');
   if(input.masterRevision!==s.masterRevision)throw new ConflictError({message:'設定が変更されています。入力内容を控え、設定を再確認してください。'});
   if(input.categoryNotes!==undefined)validateCategoryNotes(input.categoryNotes);
   const otherChanged=input.otherItem!==undefined||input.categoryNotes?.other!==undefined;
-  const f={date:validateDate(input.date),customerId:c.id,customerName:current?.customerId===c.id?current.customerName:c.name,otherItem:otherChanged?readReportNote(input.otherItem!==undefined?input.otherItem:input.categoryNotes.other):current?.otherItem??current?.categoryNotes?.other??'',itemIds:{},itemNames:{},defaultRates:clone(current?.defaultRates??c.rates),priceSource:current?.priceSource??'report-input'};
+  const f={date:validateDate(input.date),customerId:c.id,customerName:current?.customerId===c.id?current.customerName:c.name,otherItem:otherChanged?readReportNote(input.otherItem!==undefined?input.otherItem:input.categoryNotes.other):current?.otherItem??current?.categoryNotes?.other??'',itemIds:{},itemNames:{},defaultRates:clone(current?.defaultRates??effectiveRates(s,c.id)),priceSource:current?.priceSource??'report-input'};
   if(current?.categoryNotes!==undefined||input.categoryNotes!==undefined){f.categoryNotes=clone(current?.categoryNotes??{});for(const [key,value]of Object.entries(input.categoryNotes??{}))f.categoryNotes[key]=readReportNote(value);if(otherChanged&&f.categoryNotes.other!==undefined)f.categoryNotes.other=f.otherItem;}
   for(const key of numericFields)f[key]=optionalDecimal(input[key],key);
   for(const k of Object.keys(CATEGORIES)){const id=String(input.itemIds?.[k]??current?.itemIds?.[k]??''),i=master(s,'items',id);if(id && (!i || i.category!==k || ((!i.active||!c.itemIds.includes(id))&&current?.itemIds?.[k]!==id)))throw new ValidationError('選択した処分物品は現在利用できません。設定を確認してください。');f.itemIds[k]=id;f.itemNames[k]=current&&input.itemIds?.[k]===undefined?current.itemNames[k]:id?(current?.itemIds?.[k]===id?current.itemNames[k]:i.name):'';}
@@ -123,3 +140,52 @@ export function updateRecord(s,id,v,input,actorId){const a=member(s,actorId),old
 export function deleteRecord(s,id,v,actorId){const a=member(s,actorId),old=currentRecord(s,id,v);return recordChange(s,old,{...old,deleted:true,lastEditedById:a.id,lastEditedBy:a.name,updatedAt:stamp(),version:old.version+1},actorId,'delete');}
 export function restoreRecord(s,id,v,actorId){const a=member(s,actorId),old=currentRecord(s,id,v,true);if(s.records.some(r=>!r.deleted&&r.id!==id&&r.date===old.date&&r.customerId===old.customerId))throw new DuplicateError('同じ日・取引先の有効な記録があるため復元を停止しました。');return recordChange(s,old,{...old,deleted:false,lastEditedById:a.id,lastEditedBy:a.name,updatedAt:stamp(),version:old.version+1},actorId,'restore');}
 export function summarize(s,{period,value}){let start,end;if(period==='day'){start=validateDate(value);end=start+'~';}else if(period==='month'){({start,end}=monthBounds(value));}else if(period==='year'&&/^\d{4}$/.test(value)&&Number(value)>0){start=value+'-01-01';end=String(Number(value)+1).padStart(4,'0')+'-01-01';}else throw new ValidationError('集計期間を確認してください。');const records=s.records.filter(r=>!r.deleted&&r.date>=start&&r.date<end);return s.masters.customers.map(c=>{const rows=records.filter(r=>r.customerId===c.id);return {customerId:c.id,name:displayName(s,'customers',c.id),count:rows.length,combustibleKg:sumField(rows,'combustibleKg'),noncombustibleKg:sumField(rows,'noncombustibleKg'),otherFee:sumField(rows,'otherFee'),missingCombustible:rows.filter(r=>r.combustibleKg===null).length,missingNoncombustible:rows.filter(r=>r.noncombustibleKg===null).length,missingOther:rows.filter(r=>r.otherFee===null).length};}).filter(x=>x.count);}
+
+// Order is an ID list operation, never an ID or historical-name rewrite.
+export function moveMaster(s,type,id,direction,expectedMasterRevision,actorId){
+ if(!['members','customers'].includes(type)||![-1,1].includes(direction))throw new ValidationError('並び替えの対象を確認してください。');
+ const actor=member(s,actorId);if(expectedMasterRevision!==s.masterRevision)throw new ConflictError({message:'一覧が変更されています。最新の並びを確認してください。'});
+ const index=s.masters[type].findIndex(m=>m.id===id);if(index<0)throw new ValidationError('対象がありません。');
+ const target=index+direction;if(target<0||target>=s.masters[type].length)return {state:clone(s),master:clone(s.masters[type][index]),changed:false};
+ const next=clone(s),before=next.masters[type].map(m=>m.id);[next.masters[type][index],next.masters[type][target]]=[next.masters[type][target],next.masters[type][index]];
+ const m=next.masters[type][target];next.revision++;next.masterRevision++;
+ next.settingsHistory.push({id:uid(),type,masterId:id,action:'reorder',actorId,actor:actor.name,timestamp:stamp(),before:clone(m),after:clone(m),orderBefore:before,orderAfter:next.masters[type].map(m=>m.id)});
+ return {state:validateState(next),master:clone(m),changed:true};
+}
+
+export function reorderMasters(s,type,orderedIds,expectedMasterRevision,actorId,draggedId){
+ if(!['members','customers','items'].includes(type))throw new ValidationError('並び替えの対象を確認してください。');
+ const actor=member(s,actorId);if(expectedMasterRevision!==s.masterRevision)throw new ConflictError({message:'一覧が変更されています。並びは保存していません。最新の一覧を確認してください。'});
+ if(!Array.isArray(orderedIds))throw new ValidationError('並び順を確認してください。');
+ const before=s.masters[type].map(m=>m.id),ids=new Set(orderedIds);
+ if(orderedIds.length!==before.length||ids.size!==before.length||before.some(id=>!ids.has(id))||!ids.has(draggedId))throw new ValidationError('並び順の対象が一致しません。保存していません。');
+ const item=s.masters[type].find(m=>m.id===draggedId);if(before.every((id,i)=>id===orderedIds[i]))return {state:clone(s),master:clone(item),changed:false};
+ const next=clone(s),byId=new Map(next.masters[type].map(m=>[m.id,m]));next.masters[type]=orderedIds.map(id=>byId.get(id));next.revision++;next.masterRevision++;
+ next.settingsHistory.push({id:uid(),type,masterId:draggedId,action:'reorder',actorId,actor:actor.name,timestamp:stamp(),before:clone(item),after:clone(item),orderBefore:before,orderAfter:[...orderedIds]});
+ return {state:validateState(next),master:clone(item),changed:true};
+}
+
+export function summaryPeriodLabels(period,value){
+ let first,last,label;
+ if(period==='day'){first=last=validateDate(value);label=`${first.slice(0,4)}年${first.slice(5,7)}月${first.slice(8,10)}日`;}
+ else if(period==='month'){const bounds=monthBounds(value);first=bounds.start;const end=new Date(bounds.end+'T12:00:00+09:00');end.setUTCDate(end.getUTCDate()-1);last=localDate(end);label=`${value.slice(0,4)}年${value.slice(5,7)}月`;}
+ else if(period==='year'&&/^\d{4}$/.test(value)&&Number(value)>0){first=value+'-01-01';last=value+'-12-31';label=`${value}年`;}
+ else throw new ValidationError('集計期間を確認してください。');
+ const format=new Intl.DateTimeFormat('ja-JP-u-ca-japanese',{era:'long',year:'numeric',timeZone:'Asia/Tokyo'});
+ const eras=[...new Set([first,last].map(date=>format.format(new Date(date+'T12:00:00+09:00'))))];
+ return {label,era:eras.join('・')};
+}
+
+// Explicit calculation example, used only in a separate browser storage key.
+export function createCalculationSampleState(){
+ const s=createSampleState();s.records=[];s.history=[];s.settingsHistory=[];
+ s.masters.customers=s.masters.customers.slice(0,2);
+ s.masters.customers[0].name='取引先A（計算サンプル）';s.masters.customers[0].rates={combustible:30,noncombustible:null,other:300};
+ s.masters.customers[1].name='取引先B（計算サンプル）';s.masters.customers[1].rates={combustible:null,noncombustible:50,other:0};
+ s.masters.items[0].defaultRate=25;s.masters.items[1].defaultRate=40;s.calculationExample=true;
+ return validateState(s);
+}
+export function calculationSampleRows(){return [
+ {customerId:'demo-c001',combustibleKg:20,noncombustibleKg:5,otherFee:300},
+ {customerId:'demo-c002',combustibleKg:10,noncombustibleKg:2,otherFee:0}
+];}

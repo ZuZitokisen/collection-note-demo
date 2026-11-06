@@ -16,3 +16,42 @@
 
 .invoice-optional{grid-column:1/-1;display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.6}.invoice-optional[hidden]{display:none}.invoice-controls .invoice-optional input{width:18px;height:18px;flex:0 0 18px}
 .invoice-save-result{display:flex;align-items:center;gap:12px;margin:-4px 0 20px}.invoice-save-result[hidden]{display:none}.invoice-save-result a{text-decoration:none;min-width:180px;justify-content:center}
+
+/* Separate, local-only invoice identity editor. Native dialogs may stack over
+   a customer detail dialog; closing this editor restores its originating button. */
+.invoice-settings-dialog{width:min(580px,calc(100vw - 28px));max-width:580px;max-height:calc(100dvh - 28px);padding:0;border:1px solid var(--line);border-radius:18px;overflow:hidden;color:var(--text,#203e34);background:#fff}
+.invoice-settings-dialog::backdrop{background:#18332966}
+.invoice-settings-dialog form{display:flex;flex-direction:column;max-height:calc(100dvh - 30px);margin:0}
+.invoice-settings-dialog .dialog-head,.invoice-settings-dialog .dialog-foot{flex:none}
+.invoice-settings-dialog .dialog-head{align-items:flex-start;gap:12px}
+.invoice-settings-dialog .dialog-head>div{min-width:0}
+.invoice-settings-dialog .dialog-head h2{margin:0 0 6px;font-size:20px}
+.invoice-settings-dialog .dialog-head p{margin:0;overflow-wrap:anywhere}
+.invoice-settings-dialog .dialog-head .icon-button{flex:none;width:44px;height:44px;font-size:24px}
+.invoice-settings-dialog .dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px}
+.invoice-settings-fields{display:grid;gap:18px;margin:18px 0}
+.invoice-settings-fields .field{margin:0;min-width:0}
+.invoice-settings-fields .field span small{color:var(--muted);font-size:12px;font-weight:400}
+.invoice-settings-fields input,.invoice-settings-fields textarea{width:100%;max-width:100%;font:inherit;font-size:16px;min-height:48px}
+.invoice-settings-fields textarea{min-height:100px;resize:vertical;line-height:1.6}
+.invoice-settings-note{font-size:12px;line-height:1.8;color:var(--muted);margin:0 0 12px}
+.invoice-settings-dialog .dialog-foot{display:flex;justify-content:flex-end;gap:12px}
+.invoice-settings-dialog .dialog-foot .button{min-width:110px;min-height:48px}
+.invoice-settings-discard{border:1px solid #e8d7b4;background:#fcf8ed;padding:14px;border-radius:10px;font-size:13px;line-height:1.7}
+.invoice-settings-discard[hidden]{display:none}
+.invoice-settings-discard p{margin:0 0 12px}
+.invoice-settings-discard .actions{display:flex;flex-wrap:wrap;gap:10px}
+@media(max-width:600px){.invoice-settings-dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.invoice-settings-dialog form{max-height:calc(100dvh - 22px)}.invoice-settings-dialog .dialog-body{padding:18px}.invoice-settings-dialog .dialog-foot .button{flex:1;min-width:0}.invoice-settings-discard .actions .button{flex:1;font-size:12px;padding-inline:10px}}
+.invoice-settings-values{display:grid;gap:18px;margin:22px 0}.invoice-settings-values>div{min-width:0}.invoice-settings-values dt{font-size:12px;color:var(--muted);margin-bottom:7px}.invoice-settings-values dd{font-size:16px;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.invoice-settings-dialog #invoice-settings-status{font-size:13px;color:#174b41;line-height:1.7}.invoice-settings-dialog #invoice-settings-status:empty{display:none}
+
+/* Locale-independent resting date; focus exposes the native date editor/picker. */
+.invoice-date-control{display:block;position:relative;min-width:0}
+.invoice-date-control input{width:100%;opacity:0;position:relative;z-index:1;cursor:pointer}
+.invoice-date-formatted{position:absolute;inset:0;display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;color:var(--text,#203e34);font-size:16px;pointer-events:none}
+.invoice-date-control:focus-within .invoice-date-formatted{visibility:hidden}
+.invoice-date-control:focus-within input{opacity:1}
+.invoice-date-control:focus-within{outline:3px solid #4a9e87;outline-offset:2px;border-radius:10px}
+.invoice-date-control.is-disabled .invoice-date-formatted{color:var(--muted);background:#f4f5f2}
+.invoice-date-control.is-disabled input{cursor:default}
+.invoice-settings-fields select{width:100%;max-width:100%;font:inherit;font-size:16px;min-height:48px}
+.invoice-bank-group+.invoice-bank-group{border-top:1px solid var(--line);padding-top:18px;margin-top:22px}.invoice-bank-group h3{font-size:16px;margin:18px 0 10px}

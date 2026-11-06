@@ -1,6 +1,7 @@
 import { localDate } from './model.js';
 import { reportNotes } from './domain.js';
 import { buildInvoiceDocument, invoicePageSVG, createInvoicePDF } from './invoice-document.js';
+import { INVOICE_SETTINGS_KEY, emptyInvoiceSettings, validateInvoiceSettings, readInvoiceSettings } from './invoice-settings.js';
 
 // Reference: the user's printed B5 examples, inspected read-only.
 // No source customer, issuer, contact, price, or bank information is embedded.
@@ -36,6 +37,10 @@ function validateIssueDate(value) {
   try { dates = monthInfo(value.slice(0, 7)); } catch { throw new Error('発行日を選択してください。'); }
   if (Number(value.slice(8)) < 1 || Number(value.slice(8)) > dates.days) throw new Error('発行日を選択してください。');
   return value;
+}
+function issueDateLabel(value) {
+  try { validateIssueDate(value); } catch { return '日付を選択'; }
+  return value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1年$2月$3日');
 }
 function categoryLine(records, category, title) {
   let kg = 0n, known = 0n, entered = 0, missing = 0, quantities = 0, quantityMissing = 0;
@@ -73,7 +78,8 @@ function otherAmount(records) {
   return { value: relevant.length && !missing ? decimal(total, SCALE) : null, missing };
 }
 
-export function buildInvoicePreview(state, { month = localDate().slice(0, 7), customerId, issueDate = localDate(), documentType = 'invoice', includeMonthlyDetail = false } = {}) {
+export function buildInvoicePreview(state, { month = localDate().slice(0, 7), customerId, issueDate = localDate(), documentType = 'invoice', includeMonthlyDetail = false } = {}, invoiceSettings = emptyInvoiceSettings()) {
+  invoiceSettings = validateInvoiceSettings(invoiceSettings);
   const dates = monthInfo(month);
   if (!['invoice', 'monthly-detail'].includes(documentType)) throw new Error('出力の種類を選択してください。');
   if (documentType === 'invoice') validateIssueDate(issueDate);
@@ -92,7 +98,7 @@ export function buildInvoicePreview(state, { month = localDate().slice(0, 7), cu
   const missing = combustible.missing + noncombustible.missing + otherMissing;
   const hasCharges = combustible.entered + noncombustible.entered + otherRecords.length > 0;
   const known = combustible.known + noncombustible.known + otherKnown;
-  const other = { title: '粗大ごみ・その他', amount: otherRecords.length && !otherMissing ? decimal(otherKnown) : null, entered: otherRecords.length, missing: otherMissing, details: otherRecords.map(r => ({ date: r.date, text: reportNotes(r).other || r.itemNames?.other || '備考未入力', amount: fixed(r.otherFee) === null ? null : decimal(fixed(r.otherFee), SCALE) })) };
+  const other = { title: documentType === 'invoice' ? '特別清掃運搬料' : '粗大ごみ・その他', amount: otherRecords.length && !otherMissing ? decimal(otherKnown) : null, entered: otherRecords.length, missing: otherMissing, details: otherRecords.map(r => ({ date: r.date, text: reportNotes(r).other || r.itemNames?.other || '備考未入力', amount: fixed(r.otherFee) === null ? null : decimal(fixed(r.otherFee), SCALE) })) };
   const daily = Array.from({ length: dates.days }, (_, i) => {
     const date = `${month}-${String(i + 1).padStart(2, '0')}`, rows = records.filter(r => r.date === date);
     const c = categoryLine(rows, 'combustible', ''), n = categoryLine(rows, 'noncombustible', '');
@@ -101,7 +107,7 @@ export function buildInvoicePreview(state, { month = localDate().slice(0, 7), cu
   // Remove BigInt internals from the exported view model. All money is exact
   // decimal text, without applying an unconfirmed production rounding policy.
   const publicLine = ({ known: _known, ...line }) => line;
-  return { ...dates, issueDate, documentType, includeMonthlyDetail: Boolean(includeMonthlyDetail), daily, totalWeight: totalWeight([combustible, noncombustible]), customer: customer ? { id: customer.id, name: customer.name, active: customer.active } : null, count: records.length, lines: [publicLine(combustible), publicLine(noncombustible)], other, missing, knownCharges: hasCharges ? decimal(known) : null, recordedCharges: hasCharges && !missing ? decimal(known) : null, legacyUnknown: records.filter(r => r.priceSource === 'legacy-unknown').length };
+  return { ...dates, issuer: { ...invoiceSettings.issuer }, bankAccounts: invoiceSettings.bankAccounts.map(account => ({ ...account })), tax: { ...invoiceSettings.tax }, recipient: { postalCode: customer?.invoicePostalCode || '', address: customer?.invoiceAddress || '' }, issueDate, documentType, includeMonthlyDetail: Boolean(includeMonthlyDetail), daily, totalWeight: totalWeight([combustible, noncombustible]), customer: customer ? { id: customer.id, name: customer.name, active: customer.active } : null, count: records.length, lines: [publicLine(combustible), publicLine(noncombustible)], other, missing, knownCharges: hasCharges ? decimal(known) : null, recordedCharges: hasCharges && !missing ? decimal(known) : null, legacyUnknown: records.filter(r => r.priceSource === 'legacy-unknown').length };
 }
 
 function previewHTML(view) {
@@ -110,16 +116,16 @@ function previewHTML(view) {
   return document.pages.map((page, i) => `<article class="invoice-paper" data-document-kind="${page.kind}" aria-label="${page.kind === 'invoice' ? '請求書の架空プレビュー' : page.kind === 'monthly-detail' ? '月間回収明細の架空プレビュー' : '備考別紙'}">${invoicePageSVG(document, i)}</article>`).join('');
 }
 
-export function renderInvoiceOutput(state, selection = {}) {
-  const view = buildInvoicePreview(state, selection);
+export function renderInvoiceOutput(state, selection = {}, invoiceSettings = emptyInvoiceSettings()) {
+  const view = buildInvoicePreview(state, selection, invoiceSettings);
   const options = state.masters.customers.map(c => `<option value="${esc(c.id)}" ${c.id === view.customer?.id ? 'selected' : ''}>${esc(c.name)}${c.active ? '' : '（利用停止）'}</option>`).join('');
   return `<div class="section-heading"><div><p class="eyebrow">OUTPUT</p><h1>出力</h1><p class="subheading">写真の請求書・月間明細に沿ったB5の確認用見本。</p></div><span class="page-chip">架空データのみ</span></div>
     <div class="invoice-controls"><label class="field"><span>対象年月</span><input type="month" id="invoice-month" min="0001-01" max="9999-12" value="${view.month}" required></label><label class="field"><span>取引先</span><select id="invoice-customer" ${options ? '' : 'disabled'}>${options || '<option value="">取引先なし</option>'}</select></label>
     <label class="field"><span>出力の種類</span><select id="invoice-document-type"><option value="invoice" ${view.documentType === 'invoice' ? 'selected' : ''}>請求書</option><option value="monthly-detail" ${view.documentType === 'monthly-detail' ? 'selected' : ''}>月間回収明細のみ</option></select></label>
-    <label class="field"><span>発行日（請求書のみ）</span><input type="date" id="invoice-issue-date" min="0001-01-01" max="9999-12-31" value="${esc(view.issueDate)}" ${view.documentType === 'invoice' ? 'required' : 'disabled'}></label>
+    <label class="field"><span>発行日（請求書のみ）</span><span class="invoice-date-control${view.documentType === 'invoice' ? '' : ' is-disabled'}"><input type="date" id="invoice-issue-date" min="0001-01-01" max="9999-12-31" value="${esc(view.issueDate)}" ${view.documentType === 'invoice' ? 'required' : 'disabled'}><span id="invoice-issue-date-formatted" class="invoice-date-formatted" aria-hidden="true">${issueDateLabel(view.issueDate)}</span></span></label>
     <label class="invoice-optional" ${view.documentType === 'invoice' ? '' : 'hidden'}><input type="checkbox" id="invoice-include-detail" ${view.includeMonthlyDetail ? 'checked' : ''}>月間回収明細も同じPDFに含める（任意）</label>
     <div class="invoice-actions"><button type="button" class="button primary" id="invoice-download" ${view.count ? '' : 'disabled'}>PDFをダウンロード</button><button type="button" class="button secondary" id="invoice-print" ${view.count ? '' : 'disabled'}>印刷</button></div></div>
-    <div class="invoice-guide"><p>用紙はB5縦（暫定：JIS 182×257mm）。画面とPDFは同じ配置です。月間明細は必要な場合だけ選択でき、回収時の備考は別紙に全件表示します。PDFは画像形式のため文字の選択・検索はできません。</p><p>発行日は対象月と別に選びます。基本料・税率・税込／税別・端数処理・発行者・振込先・採番は未設定です。正式な請求額は未確定で、請求には使用できません。</p><p>参考小計は各回の重量 × 保存時の単価とその他料金の合算です。基本料・税は含めず、円単位への丸めもしていません。${view.legacyUnknown ? '旧版の不明な単価は補完していません。' : ''}</p><p>明細の「その他料金」は円です。写真の「粗大ごみ」の単位は未確認のため区別し、合計重量には可燃・不燃のkgだけを加えます。空欄は未入力で、0とは別です。</p></div>
+    <div class="invoice-guide"><p>用紙はB5縦（暫定：JIS 182×257mm）。画面とPDFは同じ配置です。初期状態では月間回収明細も含めます。不要な場合はチェックを外せます。回収時の備考は別紙に全件表示します。PDFは画像形式のため文字の選択・検索はできません。</p><p>発行日は対象月と別に選びます。会社情報・銀行情報・税率と請求先住所は設定から入力でき、このブラウザ内だけに保存されます。Google Sheetsには接続しません。税率等を保存しても税計算・端数処理の計算はまだ行いません。採番も未設定です。正式な請求額は未確定で、請求には使用できません。</p><p>参考小計は各回の重量 × 保存時の単価とその他料金の合算です。税は含めず、円単位への丸めもしていません。その他料金の月合計を「特別清掃運搬料」に1回だけ表示し、別の基本料は加えません。${view.legacyUnknown ? '旧版の不明な単価は補完していません。' : ''}</p><p>明細の「その他料金」は円です。写真の「粗大ごみ」の単位は未確認のため区別し、合計重量には可燃・不燃のkgだけを加えます。空欄は未入力で、0とは別です。</p></div>
     ${view.missing ? `<p class="invoice-warning">重量・単価・金額の不明または未入力が${view.missing}項目あります（不明・未入力あり）。参考小計は算出できません。入力済み部分の参考額: ${number(view.knownCharges)} 円。${view.lines.filter(line => line.missing).map(line => `${esc(line.title)}: ${line.missing}件の重量・単価が不明。`).join('')}</p>` : ''}
     ${!view.count ? '<p class="invoice-warning">この年月・取引先の記録はありません。金額を0円で補完していません。</p>' : ''}
     <p id="invoice-error" class="form-error" role="alert" hidden></p><p id="invoice-download-status" class="invoice-download-status" role="status" aria-live="polite"></p>
@@ -127,12 +133,15 @@ export function renderInvoiceOutput(state, selection = {}) {
     <div id="invoice-preview" aria-live="polite">${previewHTML(view)}</div>`;
 }
 
-export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF } = {}) {
+export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF, storageKey = INVOICE_SETTINGS_KEY, getInvoiceSettings = () => readInvoiceSettings(doc.defaultView.localStorage, storageKey).settings } = {}) {
   const host = doc.querySelector('#output-section');
   if (!host) throw new Error('出力画面が見つかりません。');
   const win = doc.defaultView, printMedia = win.matchMedia?.('print');
-  let selection = {}, disposed = false, busy = false, revision = 0, generated = null;
+  // Initial UI preference only: later explicit ON/OFF selections are retained.
+  // No persisted enclosure setting exists, and report/issuer storage is untouched.
+  let selection = { includeMonthlyDetail: true }, disposed = false, busy = false, revision = 0, generated = null;
   const downloadURLs = new Map();
+  const build = (options = selection) => buildInvoicePreview(getState(), options, getInvoiceSettings());
   function retireGenerated() {
     const url = generated?.url;
     generated = null;
@@ -158,7 +167,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   });
   function setBusy(value) {
     busy = value;
-    const count = (() => { try { return buildInvoicePreview(getState(), controlsSelection()).count; } catch { return 0; } })();
+    const count = (() => { try { return build(controlsSelection()).count; } catch { return 0; } })();
     for (const id of ['invoice-download', 'invoice-print']) { const button = host.querySelector(`#${id}`); if (button) button.disabled = value || !count; }
     const button = host.querySelector('#invoice-download'); if (button) { button.textContent = value ? 'PDFを作成中…' : 'PDFをダウンロード'; button.setAttribute('aria-busy', String(value)); }
   }
@@ -166,9 +175,12 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     if (disposed) return;
     retireGenerated();
     revision++;
-    const view = buildInvoicePreview(getState(), selection);
+    let settings, error;
+    try { settings = validateInvoiceSettings(getInvoiceSettings()); } catch (failure) { error = failure; settings = emptyInvoiceSettings(); }
+    const view = buildInvoicePreview(getState(), selection, settings);
     selection = { month: view.month, customerId: view.customer?.id, issueDate: view.issueDate, documentType: view.documentType, includeMonthlyDetail: view.includeMonthlyDetail };
-    host.innerHTML = renderInvoiceOutput(getState(), selection); setBusy(busy);
+    host.innerHTML = renderInvoiceOutput(getState(), selection, settings); setBusy(busy);
+    if (error) showError(error.message || '自社情報・請求先住所を読み取れません。', true);
   }
   function showError(message, invalid = false) {
     const error = host.querySelector('#invoice-error'); if (!error) return;
@@ -183,18 +195,22 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   function controlsSelection() {
     return { month: host.querySelector('#invoice-month')?.value || '', customerId: host.querySelector('#invoice-customer')?.value, issueDate: host.querySelector('#invoice-issue-date')?.value || '', documentType: host.querySelector('#invoice-document-type')?.value || 'invoice', includeMonthlyDetail: Boolean(host.querySelector('#invoice-include-detail')?.checked) };
   }
+  const updateIssueDateLabel = event => {
+    if (event.target.id === 'invoice-issue-date') { const label = host.querySelector('#invoice-issue-date-formatted'); if (label) label.textContent = issueDateLabel(event.target.value); }
+  };
   const change = event => {
     if (!['invoice-month', 'invoice-customer', 'invoice-issue-date', 'invoice-document-type', 'invoice-include-detail'].includes(event.target.id)) return;
+    updateIssueDateLabel(event);
     const focusId = event.target.id;
     const next = controlsSelection();
-    try { buildInvoicePreview(getState(), next); selection = next; refresh(); host.querySelector(`#${focusId}`).focus(); }
+    try { build(next); selection = next; refresh(); host.querySelector(`#${focusId}`).focus(); }
     catch (error) { showError(error.message, true); }
   };
   const click = async event => {
     const saveLink = event.target.closest('#invoice-save-link');
     if (saveLink) {
       let current = false;
-      try { current = !disposed && !host.hidden && Boolean(generated) && saveLink.getAttribute('href') === generated.url && JSON.stringify(buildInvoicePreview(getState(), controlsSelection())) === generated.snapshot; } catch { /* Invalid selection is stale. */ }
+      try { current = !disposed && !host.hidden && Boolean(generated) && saveLink.getAttribute('href') === generated.url && JSON.stringify(build(controlsSelection())) === generated.snapshot; } catch { /* Invalid selection is stale. */ }
       if (!current) {
         event.preventDefault(); retireGenerated();
         host.querySelector('#invoice-download-status').textContent = '';
@@ -206,7 +222,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     if (!button || button.disabled || busy) return;
     try {
       refresh();
-      const view = buildInvoicePreview(getState(), selection);
+      const view = build();
       if (!view.count) return;
       if (button.id === 'invoice-print') { doc.body.classList.add('invoice-printing'); print(); return; }
       const started = revision, snapshot = JSON.stringify(view);
@@ -214,7 +230,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
       host.querySelector('#invoice-download-status').textContent = 'PDFを作成しています。';
       const blob = await createPDF(view, doc);
       if (disposed || host.hidden) return;
-      if (revision !== started || JSON.stringify(buildInvoicePreview(getState(), selection)) !== snapshot) {
+      if (revision !== started || JSON.stringify(build()) !== snapshot) {
         host.querySelector('#invoice-download-status').textContent = '';
         showError('作成中に対象や記録が変わりました。最新の内容を確認して、もう一度PDFを作成してください。'); return;
       }
@@ -229,13 +245,16 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   function finishPrint() { doc.body.classList.remove('invoice-printing'); }
   function beforePrint() {
     if (host.hidden || !host.querySelector('.invoice-paper')) { finishPrint(); return; }
-    try { refresh(); doc.body.classList.toggle('invoice-printing', buildInvoicePreview(getState(), selection).count > 0); } catch { finishPrint(); }
+    try { refresh(); doc.body.classList.toggle('invoice-printing', build().count > 0); } catch { finishPrint(); }
   }
   const printMediaChange = event => { if (!event.matches) finishPrint(); };
-  host.addEventListener('change', change); host.addEventListener('click', click);
+  const settingsChanged = event => { if (!disposed && event.detail?.storageKey === storageKey) refresh(); };
+  const storageChanged = event => { if (!disposed && (event.key === storageKey || event.key === null)) refresh(); };
+  doc.addEventListener('invoice-settings-change', settingsChanged); win.addEventListener('storage', storageChanged);
+  host.addEventListener('input', updateIssueDateLabel); host.addEventListener('change', change); host.addEventListener('click', click);
   win.addEventListener('beforeprint', beforePrint); win.addEventListener('afterprint', finishPrint);
   printMedia?.addEventListener('change', printMediaChange);
   refresh();
-  return { refresh, destroy() { disposed = true; revision++; finishPrint(); retireGenerated(); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
+  return { refresh, destroy() { disposed = true; revision++; doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
 }
 
