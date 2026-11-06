@@ -6,6 +6,28 @@ const types = ['customers', 'members', 'items'];
 const stamp = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 const text = (v, max = 120) => { const s = String(v ?? '').trim(); if (!s || s.length > max) throw new ValidationError(`名称は1〜${max}文字で入力してください。`); return s; };
+function validateCategoryNotes(notes) {
+  if (!notes || typeof notes !== 'object' || Array.isArray(notes) || Object.entries(notes).some(([key, value]) => !Object.hasOwn(CATEGORIES, key) || typeof value !== 'string' || value.length > 500)) throw new ValidationError('各区分の備考は500文字以内の文字列で入力してください。');
+  return notes;
+}
+function readReportNote(value) {
+  if (typeof value !== 'string' || value.length > 500) throw new ValidationError('各区分の備考は500文字以内の文字列で入力してください。');
+  return value.trim();
+}
+// Notes are free text, not additional disposal categories or item selections.
+// otherItem remains the authoritative legacy-compatible その他 note field.
+export function reportNotes(record = {}) {
+  return { combustible: record.categoryNotes?.combustible ?? '', noncombustible: record.categoryNotes?.noncombustible ?? '', other: record.otherItem ?? record.categoryNotes?.other ?? '' };
+}
+function validateMemberProfile(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p) || (p.age !== null && (!Number.isInteger(p.age) || p.age < 0 || p.age > 120)) || !['', '男', '女', 'ー'].includes(p.gender) || typeof p.license !== 'string' || p.license.length > 200 || typeof p.other !== 'string' || p.other.length > 500) throw new ValidationError('プロフィールの形式が正しくありません。年齢は0〜120歳、性別は男・女・ーから選択してください。');
+  return p;
+}
+function readMemberProfile(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new ValidationError('プロフィールの形式が正しくありません。');
+  const age=p.age===null||p.age===undefined||p.age===''?null:(typeof p.age==='string'&&/^\d{1,3}$/.test(p.age)?Number(p.age):p.age);
+  return validateMemberProfile({age,gender:p.gender??'',license:typeof p.license==='string'?p.license.trim():p.license??'',other:typeof p.other==='string'?p.other.trim():p.other??''});
+}
 function master(state, type, id) { return state.masters[type]?.find(x => x.id === id); }
 export function activeMasters(state, type) { return state.masters[type].filter(x => x.active); }
 export function displayName(state, type, id, snapshot = '') { const m = master(state, type, id); return `${snapshot || m?.name || '名称不明'}${m && !m.active ? '（×）' : ''}`; }
@@ -39,11 +61,11 @@ export function createSampleState() {
 }
 export function validateState(s) {
   if (!s || s.schema !== 3 || !Number.isInteger(s.revision) || s.revision < 1 || !Number.isInteger(s.masterRevision) || s.masterRevision < 1 || !Array.isArray(s.records) || !Array.isArray(s.history) || !Array.isArray(s.settingsHistory)) throw new ValidationError('保存形式が正しくありません。');
-  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'items' && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); } } }
+  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'members' && m.profile !== undefined) validateMemberProfile(m.profile); if (type === 'items' && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); } } }
   if (!activeMasters(s, 'members').length) throw new ValidationError('有効なメンバーが必要です。');
   for (const c of s.masters.customers) if(c.itemIds.some(id => !master(s,'items',id))) throw new ValidationError('設定の処分物品参照が不正です。');
   const ids = new Set();
-  for (const r of s.records) { if (!r || typeof r.id !== 'string' || ids.has(r.id) || !master(s,'customers',r.customerId) || !master(s,'members',r.createdById) || !master(s,'members',r.lastEditedById) || !Number.isInteger(r.version) || r.version < 1 || typeof r.deleted !== 'boolean' || !Number.isFinite(Date.parse(r.createdAt)) || !Number.isFinite(Date.parse(r.updatedAt))) throw new ValidationError('記録の形式が正しくありません。'); validateDate(r.date); text(r.customerName); text(r.createdBy); text(r.lastEditedBy); for(const key of numericFields) { if(r[key] !== null && typeof r[key] !== 'number') throw new ValidationError('数値形式が正しくありません。'); optionalDecimal(r[key],key); } if(typeof r.otherItem !== 'string' || r.otherItem.length > 500) throw new ValidationError('その他品名の形式が正しくありません。'); for(const k of Object.keys(CATEGORIES)) if(typeof r.itemIds?.[k] !== 'string' || typeof r.itemNames?.[k] !== 'string' || (r.itemIds[k] && !master(s,'items',r.itemIds[k]))) throw new ValidationError('処分物品の参照が不正です。'); ids.add(r.id); }
+  for (const r of s.records) { if (!r || typeof r.id !== 'string' || ids.has(r.id) || !master(s,'customers',r.customerId) || !master(s,'members',r.createdById) || !master(s,'members',r.lastEditedById) || !Number.isInteger(r.version) || r.version < 1 || typeof r.deleted !== 'boolean' || !Number.isFinite(Date.parse(r.createdAt)) || !Number.isFinite(Date.parse(r.updatedAt))) throw new ValidationError('記録の形式が正しくありません。'); validateDate(r.date); text(r.customerName); text(r.createdBy); text(r.lastEditedBy); for(const key of numericFields) { if(r[key] !== null && typeof r[key] !== 'number') throw new ValidationError('数値形式が正しくありません。'); optionalDecimal(r[key],key); } if(typeof r.otherItem !== 'string' || r.otherItem.length > 500) throw new ValidationError('その他備考の形式が正しくありません。'); if(r.categoryNotes!==undefined)validateCategoryNotes(r.categoryNotes); for(const k of Object.keys(CATEGORIES)) if(typeof r.itemIds?.[k] !== 'string' || typeof r.itemNames?.[k] !== 'string' || (r.itemIds[k] && !master(s,'items',r.itemIds[k]))) throw new ValidationError('処分物品の参照が不正です。'); ids.add(r.id); }
   if (s.history.some(e => !e || typeof e.id !== 'string' || !ids.has(e.recordId) || !['create','update','delete','restore'].includes(e.action) || !master(s,'members',e.actorId) || !Number.isFinite(Date.parse(e.timestamp)) || !e.after || typeof e.after !== 'object') || s.settingsHistory.some(e => !e || !types.includes(e.type) || !master(s,e.type,e.masterId) || !master(s,'members',e.actorId) || !Number.isFinite(Date.parse(e.timestamp)))) throw new ValidationError('履歴の形式が正しくありません。');
   for (const e of s.history) {
     if (!Number.isInteger(e.version) || e.version < 1 || typeof e.actor !== 'string' || (e.before !== null && typeof e.before !== 'object')) throw new ValidationError('履歴の版・実行者が不正です。');
@@ -52,6 +74,7 @@ export function validateState(s) {
       validateState({...s,records:[snapshot],history:[],settingsHistory:[]});
     }
   }
+  for (const e of s.settingsHistory) if (e.type === 'members') for (const snapshot of [e.before,e.after]) if (snapshot?.profile !== undefined) validateMemberProfile(snapshot.profile);
   return s;
 }
 export function masterDraft(s,type,id,{duplicate=false}={}) { const old=master(s,type,id); if(!old) throw new ValidationError('対象がありません。'); const d=clone(old); if(duplicate){delete d.id;delete d.version;d.name='';d.active=true;} return d; }
@@ -61,21 +84,25 @@ export function saveMaster(s,type,input,{id=null,expectedVersion=null,actorId}={
   if(id && (!old || old.version!==expectedVersion)) throw new ConflictError(old??null);
   const name=text(input.name); if(s.masters[type].some(m=>m.id!==id && m.active && m.name===name)) throw new ValidationError('同じ名称が登録済みです。区別できる名称にしてください。');
   const next={id:old?.id??uid(),name,active:old?.active??true,version:(old?.version??0)+1};
+  if(type==='members'){if(input.profile!==undefined)next.profile=readMemberProfile(input.profile);else if(old?.profile!==undefined)next.profile=clone(old.profile);}
   if(type==='items'){if(!CATEGORIES[input.category])throw new ValidationError('区分を選択してください。');if(old && old.category!==input.category && s.records.some(r=>Object.values(r.itemIds).includes(id)))throw new ValidationError('使用済み物品の区分は変更できません。複製して新しく登録してください。');next.category=input.category;}
   if(type==='customers'){next.enabled={};next.rates={};for(const k of Object.keys(CATEGORIES)){next.enabled[k]=!!input.enabled?.[k];next.rates[k]=optionalDecimal(input.rates?.[k],`${CATEGORIES[k]}の初期値`);}if(!Object.values(next.enabled).some(Boolean))throw new ValidationError('扱う区分を1つ以上選択してください。');next.itemIds=[...new Set(input.itemIds??[])];if(next.itemIds.some(id=>!master(s,'items',id)))throw new ValidationError('処分物品が見つかりません。');}
   return masterChange(s,type,old,next,actorId,old?'update':'create');
 }
-export function setMasterActive(s,type,id,expectedVersion,active,actorId){member(s,actorId);const m=master(s,type,id);if(!m||m.version!==expectedVersion)throw new ConflictError(m??null);if(type==='members'&&!active&&activeMasters(s,type).length===1&&m.active)throw new ValidationError('最後の有効なメンバーは利用停止できません。');if(active&&s.masters[type].some(x=>x.id!==id&&x.active&&x.name===m.name))throw new ValidationError('同じ名称の有効な項目があります。先に名称を区別してください。');return masterChange(s,type,m,{...m,active:!!active,version:m.version+1},actorId,active?'reactivate':'deactivate');}
+export function setMasterActive(s,type,id,expectedVersion,active,actorId){member(s,actorId);const m=master(s,type,id);if(!m||m.version!==expectedVersion)throw new ConflictError(m??null);if(type==='members'&&!active&&activeMasters(s,type).length===1&&m.active)throw new ValidationError('最後の有効なメンバーは削除できません。');if(active&&s.masters[type].some(x=>x.id!==id&&x.active&&x.name===m.name))throw new ValidationError('同じ名称の有効な項目があります。先に名称を区別してください。');return masterChange(s,type,m,{...m,active:!!active,version:m.version+1},actorId,active?'reactivate':'deactivate');}
 export function reportDefaults(s,customerId){const c=master(s,'customers',customerId);if(!c?.active)throw new ValidationError('有効な取引先を選択してください。');return {combustibleKg:null,noncombustibleKg:null,otherItem:'',otherFee:c.enabled.other?c.rates.other:null,combustibleRate:c.enabled.combustible?c.rates.combustible:null,noncombustibleRate:c.enabled.noncombustible?c.rates.noncombustible:null,itemIds:{combustible:'',noncombustible:'',other:''},defaultRates:clone(c.rates),priceSource:'customer-default',masterRevision:s.masterRevision};}
 function fields(s,input,current=null){
   const c=master(s,'customers',input.customerId);if(!c || (!c.active&&current?.customerId!==c.id))throw new ValidationError('有効な取引先を選択してください。');
   if(input.masterRevision!==s.masterRevision)throw new ConflictError({message:'設定が変更されています。入力内容を控え、設定を再確認してください。'});
-  const f={date:validateDate(input.date),customerId:c.id,customerName:current?.customerId===c.id?current.customerName:c.name,otherItem:String(input.otherItem??'').trim(),itemIds:{},itemNames:{},defaultRates:clone(current?.defaultRates??c.rates),priceSource:current?.priceSource??'report-input'};
+  if(input.categoryNotes!==undefined)validateCategoryNotes(input.categoryNotes);
+  const otherChanged=input.otherItem!==undefined||input.categoryNotes?.other!==undefined;
+  const f={date:validateDate(input.date),customerId:c.id,customerName:current?.customerId===c.id?current.customerName:c.name,otherItem:otherChanged?readReportNote(input.otherItem!==undefined?input.otherItem:input.categoryNotes.other):current?.otherItem??current?.categoryNotes?.other??'',itemIds:{},itemNames:{},defaultRates:clone(current?.defaultRates??c.rates),priceSource:current?.priceSource??'report-input'};
+  if(current?.categoryNotes!==undefined||input.categoryNotes!==undefined){f.categoryNotes=clone(current?.categoryNotes??{});for(const [key,value]of Object.entries(input.categoryNotes??{}))f.categoryNotes[key]=readReportNote(value);if(otherChanged&&f.categoryNotes.other!==undefined)f.categoryNotes.other=f.otherItem;}
   for(const key of numericFields)f[key]=optionalDecimal(input[key],key);
-  if(f.otherItem.length>500)throw new ValidationError('その他品名は500文字以内です。');
-  for(const k of Object.keys(CATEGORIES)){const id=String(input.itemIds?.[k]??''),i=master(s,'items',id);if(id && (!i || i.category!==k || ((!i.active||!c.itemIds.includes(id))&&current?.itemIds?.[k]!==id)))throw new ValidationError('選択した処分物品は現在利用できません。設定を確認してください。');f.itemIds[k]=id;f.itemNames[k]=id?(current?.itemIds?.[k]===id?current.itemNames[k]:i.name):'';}
-  for(const [k,keys] of Object.entries({combustible:['combustibleKg','combustibleRate'],noncombustible:['noncombustibleKg','noncombustibleRate'],other:['otherFee']})){if(!c.enabled[k] && !current && (keys.some(key=>f[key]!==null)||f.itemIds[k]||(k==='other'&&f.otherItem)))throw new ValidationError('取引先で扱わない区分に入力があります。');}
-  if(f.combustibleKg===null&&f.noncombustibleKg===null&&f.otherFee===null&&!f.otherItem&&!f.itemIds.other)throw new ValidationError('重量・その他品名・その他金額のいずれかを入力してください。');
+  for(const k of Object.keys(CATEGORIES)){const id=String(input.itemIds?.[k]??current?.itemIds?.[k]??''),i=master(s,'items',id);if(id && (!i || i.category!==k || ((!i.active||!c.itemIds.includes(id))&&current?.itemIds?.[k]!==id)))throw new ValidationError('選択した処分物品は現在利用できません。設定を確認してください。');f.itemIds[k]=id;f.itemNames[k]=current&&input.itemIds?.[k]===undefined?current.itemNames[k]:id?(current?.itemIds?.[k]===id?current.itemNames[k]:i.name):'';}
+  const notes=reportNotes(f);
+  for(const [k,keys] of Object.entries({combustible:['combustibleKg','combustibleRate'],noncombustible:['noncombustibleKg','noncombustibleRate'],other:['otherFee']})){if(!c.enabled[k] && !current && (keys.some(key=>f[key]!==null)||f.itemIds[k]||notes[k]))throw new ValidationError('取引先で扱わない区分に入力があります。');}
+  if(f.combustibleKg===null&&f.noncombustibleKg===null&&f.otherFee===null&&!Object.values(notes).some(Boolean)&&!f.itemIds.other)throw new ValidationError('重量・備考・その他金額のいずれかを入力してください。');
   if(s.records.some(r=>!r.deleted&&r.id!==current?.id&&r.date===f.date&&r.customerId===c.id))throw new DuplicateError('同じ日・取引先の記録があります。閲覧編集から既存記録を編集してください。');
   return f;
 }
