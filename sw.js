@@ -1,8 +1,8 @@
-const VERSION = '0.5.11';
-const CACHE = 'work-report-shell-v17';
+const VERSION = '0.5.12';
+const CACHE = 'work-report-shell-v18';
 const PREFIX = 'work-report-shell-';
 const ROOT = new URL('./', self.location.href);
-const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/invoice-seal.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
+const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/invoice-seal.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/invoice-seal-lowres.png', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
 const urls = ASSETS.map(path => new URL(path, ROOT).href);
 self.addEventListener('install', event => {
   // Complete this release before activation; failed precache leaves the old worker usable.
