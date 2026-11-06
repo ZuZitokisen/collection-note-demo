@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.6';
-export const RELEASE_CHANGES = ["報告の取引先を横並びタブで切り替え", "記録カードをコンパクトにし、内容と履歴を詳細に集約", "処分物品をコンパクトな一覧と上部操作に統一", "削除履歴に復旧ボタンを追加", "空欄の数量を「ー」で表示、案内を整理", "保存済みの記録・単価・履歴は保持"];
+export const APP_VERSION = '0.5.7';
+export const RELEASE_CHANGES = ["請求書を写真見本に合わせたB5縦へ変更", "PDFを直接保存、日別明細は必要時に選択", "対象月と発行日を別々に指定", "保存済みの報告・設定・履歴は保持"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
