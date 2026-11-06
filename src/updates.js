@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.13';
-export const RELEASE_CHANGES = ["名称をRouteNoteに統一", "取引先タブを入力ページへつなぎ、選択中は少し濃い青・非選択は薄青に", "入力中の表示を除き、下メニューを無彩色に統一"];
+export const APP_VERSION = '0.5.14';
+export const RELEASE_CHANGES = ["取引先タブの左端を入力ページに揃え、タブ同士の隙間を詰めました", "重量・設定単価・総計を横並びにし、表示された単価をその報告だけ変更できるようにしました", "報告の備考を1行にし、取引先選択と可燃の間の余白を詰めました", "その他は総計の金額入力から備考の順にし、説明文を整理しました", "閲覧・編集の重量の横に、保存当時の単価を表示します", "集計に保存単価と総計・計算式を追加し、単価混在と未確定を区別します", "ポップアップを短いフェードインで表示し、動きを減らす設定に対応します"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');

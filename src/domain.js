@@ -139,7 +139,29 @@ function currentRecord(s,id,v,deleted=false){const r=s.records.find(r=>r.id===id
 export function updateRecord(s,id,v,input,actorId){const a=member(s,actorId),old=currentRecord(s,id,v),f=fields(s,input,old);return recordChange(s,old,{...old,...f,lastEditedById:a.id,lastEditedBy:a.name,updatedAt:stamp(),version:old.version+1},actorId,'update');}
 export function deleteRecord(s,id,v,actorId){const a=member(s,actorId),old=currentRecord(s,id,v);return recordChange(s,old,{...old,deleted:true,lastEditedById:a.id,lastEditedBy:a.name,updatedAt:stamp(),version:old.version+1},actorId,'delete');}
 export function restoreRecord(s,id,v,actorId){const a=member(s,actorId),old=currentRecord(s,id,v,true);if(s.records.some(r=>!r.deleted&&r.id!==id&&r.date===old.date&&r.customerId===old.customerId))throw new DuplicateError('同じ日・取引先の有効な記録があるため復元を停止しました。');return recordChange(s,old,{...old,deleted:false,lastEditedById:a.id,lastEditedBy:a.name,updatedAt:stamp(),version:old.version+1},actorId,'restore');}
-export function summarize(s,{period,value}){let start,end;if(period==='day'){start=validateDate(value);end=start+'~';}else if(period==='month'){({start,end}=monthBounds(value));}else if(period==='year'&&/^\d{4}$/.test(value)&&Number(value)>0){start=value+'-01-01';end=String(Number(value)+1).padStart(4,'0')+'-01-01';}else throw new ValidationError('集計期間を確認してください。');const records=s.records.filter(r=>!r.deleted&&r.date>=start&&r.date<end);return s.masters.customers.map(c=>{const rows=records.filter(r=>r.customerId===c.id);return {customerId:c.id,name:displayName(s,'customers',c.id),count:rows.length,combustibleKg:sumField(rows,'combustibleKg'),noncombustibleKg:sumField(rows,'noncombustibleKg'),otherFee:sumField(rows,'otherFee'),missingCombustible:rows.filter(r=>r.combustibleKg===null).length,missingNoncombustible:rows.filter(r=>r.noncombustibleKg===null).length,missingOther:rows.filter(r=>r.otherFee===null).length};}).filter(x=>x.count);}
+// Read-only money summaries use saved record prices, never current masters.
+// Missing operands remain unknown; explicit zero is a complete input.
+function summaryCharges(rows){
+ const scale=1000000n,productScale=scale*scale;
+ const fixed=value=>{if(value===null||value===undefined)return null;const [whole,fraction]=value.toFixed(6).split('.');return BigInt(whole)*scale+BigInt(fraction);};
+ const decimal=(value,unit=productScale)=>{const fraction=(value%unit).toString().padStart(String(unit).length-1,'0').replace(/0+$/,'');return `${value/unit}${fraction?'.'+fraction:''}`;};
+ const category=key=>{
+  const groups=new Map();let known=0n,quantity=0n,quantities=0,entered=0,missing=0,missingWeight=0,missingRate=0;
+  for(const row of rows){const kg=fixed(row[key+'Kg']);if(kg===null&&!reportNotes(row)[key]&&!row.itemIds?.[key]&&!row.itemNames?.[key])continue;
+   entered++;const rate=row[key+'Rate']??null,price=fixed(rate),groupKey=rate===null?'missing':String(rate);if(!groups.has(groupKey))groups.set(groupKey,{rate,count:0,quantity:0n,quantities:0,known:0n,missingWeight:0});const group=groups.get(groupKey);group.count++;
+   if(kg===null){missingWeight++;group.missingWeight++;}else{quantity+=kg;quantities++;group.quantity+=kg;group.quantities++;}
+   if(price===null)missingRate++;if(kg===null||price===null)missing++;else{known+=kg*price;group.known+=kg*price;}
+  }
+  const breakdown=[...groups.values()].sort((a,b)=>a.rate===null?1:b.rate===null?-1:a.rate-b.rate).map(group=>({rate:group.rate,count:group.count,quantity:group.quantities?decimal(group.quantity,scale):null,missingWeight:group.missingWeight,amount:group.rate===null||group.missingWeight?null:decimal(group.known)}));
+  return {entered,quantity:quantities?decimal(quantity,scale):null,amount:entered&&!missing?decimal(known):null,knownAmount:decimal(known),missing,missingWeight,missingRate,rates:breakdown.filter(group=>group.rate!==null).map(group=>group.rate),groups:breakdown};
+ };
+ const combustible=category('combustible'),noncombustible=category('noncombustible');let otherKnown=0n,otherMissing=0,otherEntered=0;
+ for(const row of rows){const value=fixed(row.otherFee);if(value===null&&!reportNotes(row).other&&!row.itemIds?.other&&!row.itemNames?.other)continue;otherEntered++;if(value===null)otherMissing++;else otherKnown+=value*scale;}
+ const other={entered:otherEntered,amount:otherEntered&&!otherMissing?decimal(otherKnown):null,knownAmount:decimal(otherKnown),missing:otherMissing},entered=combustible.entered+noncombustible.entered+otherEntered,missing=combustible.missing+noncombustible.missing+otherMissing;
+ const total=!entered||missing?null:decimal([combustible.knownAmount,noncombustible.knownAmount,other.knownAmount].reduce((sum,value)=>{const [whole,fraction='']=value.split('.');return sum+BigInt(whole)*productScale+BigInt(fraction.padEnd(12,'0'));},0n));
+ return {combustible,noncombustible,other,total,entered,missing};
+}
+export function summarize(s,{period,value}){let start,end;if(period==='day'){start=validateDate(value);end=start+'~';}else if(period==='month'){({start,end}=monthBounds(value));}else if(period==='year'&&/^\d{4}$/.test(value)&&Number(value)>0){start=value+'-01-01';end=String(Number(value)+1).padStart(4,'0')+'-01-01';}else throw new ValidationError('集計期間を確認してください。');const records=s.records.filter(r=>!r.deleted&&r.date>=start&&r.date<end);return s.masters.customers.map(c=>{const rows=records.filter(r=>r.customerId===c.id);return {customerId:c.id,name:displayName(s,'customers',c.id),count:rows.length,combustibleKg:sumField(rows,'combustibleKg'),noncombustibleKg:sumField(rows,'noncombustibleKg'),otherFee:sumField(rows,'otherFee'),missingCombustible:rows.filter(r=>r.combustibleKg===null).length,missingNoncombustible:rows.filter(r=>r.noncombustibleKg===null).length,missingOther:rows.filter(r=>r.otherFee===null).length,charges:summaryCharges(rows)};}).filter(x=>x.count);}
 
 // Order is an ID list operation, never an ID or historical-name rewrite.
 export function moveMaster(s,type,id,direction,expectedMasterRevision,actorId){
