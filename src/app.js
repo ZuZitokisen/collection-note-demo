@@ -60,7 +60,7 @@ function selectReportRow(id,{focusTab=false,reveal=true}={}){
 function refreshReportChoices(){
  const rows=reportRows(),chosen=rows.map(row=>row.dataset.entry).filter(Boolean),available=D.activeMasters(state,'customers').length;
  rows.forEach((row,index)=>{const select=row.querySelector('[data-report-customer]');select.setAttribute('aria-label',`取引先 ${index+1}`);[...select.options].forEach(option=>option.disabled=!!option.value&&chosen.includes(option.value)&&option.value!==row.dataset.entry);row.querySelector('[data-remove-report-row]').setAttribute('aria-label',`${reportRowLabel(row,index)}の入力行を削除`);});
- const strip=$('#report-tabs'),scroll=strip.scrollLeft;strip.innerHTML=rows.map((row,index)=>`<button type="button" class="report-tab" id="${row.dataset.reportRow}-tab" role="tab" aria-selected="false" aria-controls="${row.dataset.reportRow}" tabindex="-1" data-report-tab="${row.dataset.reportRow}" title="${esc(reportRowLabel(row,index))}"><span class="report-tab-number" aria-hidden="true">${index+1}</span><span class="report-tab-name">${esc(reportRowLabel(row,index))}</span></button>`).join('');strip.scrollLeft=scroll;
+ const strip=$('#report-tabs'),scroll=strip.scrollLeft;strip.innerHTML=rows.map((row,index)=>`<button type="button" class="report-tab" id="${row.dataset.reportRow}-tab" role="tab" aria-selected="false" aria-controls="${row.dataset.reportRow}" tabindex="-1" data-report-tab="${row.dataset.reportRow}" title="取引先${index+1}"><span class="report-tab-name">取引先${index+1}</span></button>`).join('');strip.scrollLeft=scroll;
  $('#selected-count').textContent=`${chosen.length}件入力`;$('#add-report-row').disabled=storageFailed||rows.length>=available;$('#report-empty').hidden=rows.length>0;
  selectReportRow(activeReportRowId);
 }
