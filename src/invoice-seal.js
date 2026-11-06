@@ -112,6 +112,24 @@ export async function prepareInvoiceSeal(file, doc = globalThis.document) {
     image.onload = image.onerror = null; image.src = '';
   }
 }
+// A single public, low-resolution asset is allowlisted. Never persist it into
+// the private override store, accept redirects, or bypass raster validation.
+export async function loadDefaultInvoiceSeal(doc = globalThis.document, fetcher = doc?.defaultView?.fetch?.bind(doc.defaultView) ?? globalThis.fetch, prepare = prepareInvoiceSeal) {
+  const location = doc?.defaultView?.location;
+  if (!location || !['http:', 'https:'].includes(location.protocol) || !fetcher) throw new InvoiceSealError('標準の社印を読み込めません。', 'default-unavailable');
+  const url = new URL('./icons/invoice-seal-lowres.png', location.href);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetcher(url.href, { mode: 'same-origin', credentials: 'same-origin', redirect: 'error', signal: controller.signal });
+    if (!response.ok || response.type === 'opaque' || response.redirected || (response.url && response.url !== url.href)) throw invalid();
+    const blob = await response.blob();
+    if (blob.type !== 'image/png') throw invalid();
+    const result = validateCanonicalSeal(await prepare(blob, doc));
+    if (!result || result.width > 160 || result.height > 160) throw invalid();
+    return result;
+  } finally { clearTimeout(timer); }
+}
 // Calling this factory is inert. Persistence occurs only through explicit
 // load/save/remove calls; callers opt in, and may otherwise keep bytes in memory.
 export function createSealStore(indexedDB) {
