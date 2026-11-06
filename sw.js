@@ -1,8 +1,8 @@
-const VERSION = '0.5.9';
-const CACHE = 'collection-note-private-shell-v12';
+const VERSION = '0.5.10';
+const CACHE = 'collection-note-private-shell-v13';
 const PREFIX = 'collection-note-private-shell-';
 const ROOT = new URL('./', self.location.href);
-const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
+const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
 const urls = ASSETS.map(path => new URL(path, ROOT).href);
 self.addEventListener('install', event => {
   // Complete this release before activation; failed precache leaves the old worker usable.
