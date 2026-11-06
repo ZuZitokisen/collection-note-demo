@@ -61,7 +61,7 @@ export function createSampleState() {
 }
 export function validateState(s) {
   if (!s || s.schema !== 3 || !Number.isInteger(s.revision) || s.revision < 1 || !Number.isInteger(s.masterRevision) || s.masterRevision < 1 || !Array.isArray(s.records) || !Array.isArray(s.history) || !Array.isArray(s.settingsHistory)) throw new ValidationError('保存形式が正しくありません。');
-  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'members' && m.profile !== undefined) validateMemberProfile(m.profile); if (type === 'items' && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); } } }
+  for (const type of types) { const ids = new Set(); if (!Array.isArray(s.masters?.[type])) throw new ValidationError('設定形式が正しくありません。'); for (const m of s.masters[type]) { if (!m || typeof m.id !== 'string' || !m.id || ids.has(m.id) || typeof m.active !== 'boolean' || !Number.isInteger(m.version) || m.version < 1) throw new ValidationError('設定IDまたは版が正しくありません。'); text(m.name); ids.add(m.id); if (type === 'members' && m.profile !== undefined) validateMemberProfile(m.profile); if (type === 'items' && m.category !== undefined && !CATEGORIES[m.category]) throw new ValidationError('区分が正しくありません。'); if (type === 'customers') { if (!Array.isArray(m.itemIds) || Object.keys(CATEGORIES).some(k => typeof m.enabled?.[k] !== 'boolean' || (m.rates?.[k] !== null && typeof m.rates?.[k] !== 'number'))) throw new ValidationError('取引先設定が正しくありません。'); for(const k of Object.keys(CATEGORIES)) optionalDecimal(m.rates[k], '単価'); } } }
   if (!activeMasters(s, 'members').length) throw new ValidationError('有効なメンバーが必要です。');
   for (const c of s.masters.customers) if(c.itemIds.some(id => !master(s,'items',id))) throw new ValidationError('設定の処分物品参照が不正です。');
   const ids = new Set();
@@ -85,12 +85,21 @@ export function saveMaster(s,type,input,{id=null,expectedVersion=null,actorId}={
   const name=text(input.name); if(s.masters[type].some(m=>m.id!==id && m.active && m.name===name)) throw new ValidationError('同じ名称が登録済みです。区別できる名称にしてください。');
   const next={id:old?.id??uid(),name,active:old?.active??true,version:(old?.version??0)+1};
   if(type==='members'){if(input.profile!==undefined)next.profile=readMemberProfile(input.profile);else if(old?.profile!==undefined)next.profile=clone(old.profile);}
-  if(type==='items'){if(!CATEGORIES[input.category])throw new ValidationError('区分を選択してください。');if(old && old.category!==input.category && s.records.some(r=>Object.values(r.itemIds).includes(id)))throw new ValidationError('使用済み物品の区分は変更できません。複製して新しく登録してください。');next.category=input.category;}
-  if(type==='customers'){next.enabled={};next.rates={};for(const k of Object.keys(CATEGORIES)){next.enabled[k]=!!input.enabled?.[k];next.rates[k]=optionalDecimal(input.rates?.[k],`${CATEGORIES[k]}の初期値`);}if(!Object.values(next.enabled).some(Boolean))throw new ValidationError('扱う区分を1つ以上選択してください。');next.itemIds=[...new Set(input.itemIds??[])];if(next.itemIds.some(id=>!master(s,'items',id)))throw new ValidationError('処分物品が見つかりません。');}
+  if(type==='items'){
+    // Old classifications remain audit data; new note candidates need no category.
+    const category=input.category===undefined?old?.category:input.category;
+    if(category!==undefined){if(!CATEGORIES[category])throw new ValidationError('区分が正しくありません。');if(old && old.category!==category && s.records.some(r=>Object.values(r.itemIds).includes(id)))throw new ValidationError('使用済み物品の区分は変更できません。');next.category=category;}
+  }
+  if(type==='customers'){
+    next.enabled=clone(input.enabled??old?.enabled??defaults().enabled);
+    next.rates={};for(const k of Object.keys(CATEGORIES))next.rates[k]=optionalDecimal((input.rates??old?.rates)?.[k],`${CATEGORIES[k]}の初期値`);
+    next.itemIds=[...new Set(input.itemIds??old?.itemIds??[])];
+    if(next.itemIds.some(id=>!master(s,'items',id)))throw new ValidationError('処分物品が見つかりません。');
+  }
   return masterChange(s,type,old,next,actorId,old?'update':'create');
 }
 export function setMasterActive(s,type,id,expectedVersion,active,actorId){member(s,actorId);const m=master(s,type,id);if(!m||m.version!==expectedVersion)throw new ConflictError(m??null);if(type==='members'&&!active&&activeMasters(s,type).length===1&&m.active)throw new ValidationError('最後の有効なメンバーは削除できません。');if(active&&s.masters[type].some(x=>x.id!==id&&x.active&&x.name===m.name))throw new ValidationError('同じ名称の有効な項目があります。先に名称を区別してください。');return masterChange(s,type,m,{...m,active:!!active,version:m.version+1},actorId,active?'reactivate':'deactivate');}
-export function reportDefaults(s,customerId){const c=master(s,'customers',customerId);if(!c?.active)throw new ValidationError('有効な取引先を選択してください。');return {combustibleKg:null,noncombustibleKg:null,otherItem:'',otherFee:c.enabled.other?c.rates.other:null,combustibleRate:c.enabled.combustible?c.rates.combustible:null,noncombustibleRate:c.enabled.noncombustible?c.rates.noncombustible:null,itemIds:{combustible:'',noncombustible:'',other:''},defaultRates:clone(c.rates),priceSource:'customer-default',masterRevision:s.masterRevision};}
+export function reportDefaults(s,customerId){const c=master(s,'customers',customerId);if(!c?.active)throw new ValidationError('有効な取引先を選択してください。');return {combustibleKg:null,noncombustibleKg:null,otherItem:'',otherFee:c.rates.other,combustibleRate:c.rates.combustible,noncombustibleRate:c.rates.noncombustible,itemIds:{combustible:'',noncombustible:'',other:''},defaultRates:clone(c.rates),priceSource:'customer-default',masterRevision:s.masterRevision};}
 function fields(s,input,current=null){
   const c=master(s,'customers',input.customerId);if(!c || (!c.active&&current?.customerId!==c.id))throw new ValidationError('有効な取引先を選択してください。');
   if(input.masterRevision!==s.masterRevision)throw new ConflictError({message:'設定が変更されています。入力内容を控え、設定を再確認してください。'});
@@ -101,7 +110,7 @@ function fields(s,input,current=null){
   for(const key of numericFields)f[key]=optionalDecimal(input[key],key);
   for(const k of Object.keys(CATEGORIES)){const id=String(input.itemIds?.[k]??current?.itemIds?.[k]??''),i=master(s,'items',id);if(id && (!i || i.category!==k || ((!i.active||!c.itemIds.includes(id))&&current?.itemIds?.[k]!==id)))throw new ValidationError('選択した処分物品は現在利用できません。設定を確認してください。');f.itemIds[k]=id;f.itemNames[k]=current&&input.itemIds?.[k]===undefined?current.itemNames[k]:id?(current?.itemIds?.[k]===id?current.itemNames[k]:i.name):'';}
   const notes=reportNotes(f);
-  for(const [k,keys] of Object.entries({combustible:['combustibleKg','combustibleRate'],noncombustible:['noncombustibleKg','noncombustibleRate'],other:['otherFee']})){if(!c.enabled[k] && !current && (keys.some(key=>f[key]!==null)||f.itemIds[k]||notes[k]))throw new ValidationError('取引先で扱わない区分に入力があります。');}
+
   if(f.combustibleKg===null&&f.noncombustibleKg===null&&f.otherFee===null&&!Object.values(notes).some(Boolean)&&!f.itemIds.other)throw new ValidationError('重量・備考・その他金額のいずれかを入力してください。');
   if(s.records.some(r=>!r.deleted&&r.id!==current?.id&&r.date===f.date&&r.customerId===c.id))throw new DuplicateError('同じ日・取引先の記録があります。閲覧編集から既存記録を編集してください。');
   return f;

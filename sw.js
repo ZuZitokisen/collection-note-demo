@@ -1,5 +1,5 @@
-const VERSION = '0.5.4';
-const CACHE = 'collection-note-private-shell-v7';
+const VERSION = '0.5.5';
+const CACHE = 'collection-note-private-shell-v8';
 const PREFIX = 'collection-note-private-shell-';
 const ROOT = new URL('./', self.location.href);
 const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
