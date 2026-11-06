@@ -3,7 +3,7 @@
 export const DEMO_SESSION_KEY = 'collection-report-demo-session-v1';
 export class DemoSessionRequiredError extends Error {
   constructor() {
-    super('仮の利用者を選び直してください。入力中の内容は残しています。');
+    super('利用者を選び直してください。入力中の内容は残しています。');
     this.name = 'DemoSessionRequiredError';
   }
 }
