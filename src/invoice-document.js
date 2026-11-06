@@ -1,4 +1,7 @@
 import { INVOICE_BANK_TYPES } from './invoice-settings.js';
+import { validateCanonicalSeal } from './invoice-seal.js';
+// Same relative position as the B5 printed example: issuer block, right side.
+export const INVOICE_SEAL_BOX = Object.freeze({ x: 131, y: 68, width: 20, height: 20 });
 // Printed-photo layout. Identity is optional, explicitly configured, and local only.
 // Coordinates are millimetres. JIS B5 is provisional within the user's B5 request.
 export const INVOICE_GEOMETRY = Object.freeze({
@@ -98,7 +101,7 @@ function invoicePage(view, hasNotes) {
     ...bankCells(view),
     text('draft-note', '見本：税額未確定。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
   [207, 214, 221, 228].forEach(y => rules.push(line(left, y, 85, y)));
-  return { kind: 'invoice', cells, rules };
+  return { kind: 'invoice', cells, rules, seal: validateCanonicalSeal(view.seal ?? null) };
 }
 function monthlyPage(view) {
   const g = INVOICE_GEOMETRY, left = g.detailLeft, top = g.detailTop, widths = g.detailColumns, right = left + sum(widths), rowHeight = g.detailRowHeight;
@@ -157,8 +160,11 @@ export function invoicePageSVG(document, index) {
   const g = INVOICE_GEOMETRY;
   const mark = textSVG(text('', 'SAMPLE ・ 架空データ / 請求には使用できません', 15, 9, { size: 2.2 }));
   const rules = page.rules.map(rule => `<line x1="${rule.x1}" y1="${rule.y1}" x2="${rule.x2}" y2="${rule.y2}" stroke="#000" stroke-width="${rule.width}"/>`).join('');
+  const seal = page.kind === 'invoice' ? validateCanonicalSeal(page.seal ?? null) : null;
+  const box = INVOICE_SEAL_BOX;
+  const sealSVG = seal ? `<image data-invoice-seal="true" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMid meet" href="${seal.dataURL}"/>` : '';
   const label = page.kind === 'invoice' ? '請求書の架空プレビュー' : page.kind === 'monthly-detail' ? '月間回収明細の架空プレビュー' : '備考別紙';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${g.pageWidth} ${g.pageHeight}" width="${g.pixelWidth}" height="${g.pixelHeight}" role="img" aria-label="${label} ${index + 1} / ${document.pages.length}"><rect width="${g.pageWidth}" height="${g.pageHeight}" fill="white"/><g fill="#000" font-family="${esc(FONT)}">${mark}${rules}${page.cells.map(textSVG).join('')}${document.pages.length > 1 ? textSVG(text('', `${index + 1} / ${document.pages.length}`, 171, 252, { size: 2.1, align: 'right' })) : ''}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${g.pageWidth} ${g.pageHeight}" width="${g.pixelWidth}" height="${g.pixelHeight}" role="img" aria-label="${label} ${index + 1} / ${document.pages.length}"><rect width="${g.pageWidth}" height="${g.pageHeight}" fill="white" data-invoice-layer="paper"/>${sealSVG}<g data-invoice-layer="content" fill="#000" font-family="${esc(FONT)}">${mark}${rules}${page.cells.map(textSVG).join('')}${document.pages.length > 1 ? textSVG(text('', `${index + 1} / ${document.pages.length}`, 171, 252, { size: 2.1, align: 'right' })) : ''}</g></svg>`;
 }
 
 // Small binary PDF writer: JPEG page images are embedded without re-encoding.
@@ -212,7 +218,7 @@ export async function createInvoicePDF(view, doc = globalThis.document) {
       if (!blob) throw new Error('PDF画像を保存できませんでした。');
       const jpeg = new Uint8Array(await blob.arrayBuffer());
       pages.push({ jpeg, width: canvas.width, height: canvas.height });
-    } finally { canvas.width = canvas.height = 1; image.onload = image.onerror = null; }
+    } finally { canvas.width = canvas.height = 1; image.onload = image.onerror = null; image.removeAttribute?.('src'); }
   }
   return new win.Blob([jpegPagesToPDF(pages)], { type: 'application/pdf' });
 }

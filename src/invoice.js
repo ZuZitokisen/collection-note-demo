@@ -1,3 +1,4 @@
+import { prepareInvoiceSeal, validateCanonicalSeal, createSealStore } from './invoice-seal.js';
 import { localDate } from './model.js';
 import { reportNotes } from './domain.js';
 import { buildInvoiceDocument, invoicePageSVG, createInvoicePDF } from './invoice-document.js';
@@ -116,14 +117,15 @@ function previewHTML(view) {
   return document.pages.map((page, i) => `<article class="invoice-paper" data-document-kind="${page.kind}" aria-label="${page.kind === 'invoice' ? '請求書の架空プレビュー' : page.kind === 'monthly-detail' ? '月間回収明細の架空プレビュー' : '備考別紙'}">${invoicePageSVG(document, i)}</article>`).join('');
 }
 
-export function renderInvoiceOutput(state, selection = {}, invoiceSettings = emptyInvoiceSettings()) {
-  const view = buildInvoicePreview(state, selection, invoiceSettings);
+export function renderInvoiceOutput(state, selection = {}, invoiceSettings = emptyInvoiceSettings(), sealState = {}) {
+  const view = { ...buildInvoicePreview(state, selection, invoiceSettings), seal: validateCanonicalSeal(sealState.seal ?? null) };
   const options = state.masters.customers.map(c => `<option value="${esc(c.id)}" ${c.id === view.customer?.id ? 'selected' : ''}>${esc(c.name)}${c.active ? '' : '（利用停止）'}</option>`).join('');
   return `<div class="section-heading"><div><p class="eyebrow">OUTPUT</p><h1>出力</h1><p class="subheading">写真の請求書・月間明細に沿ったB5の確認用見本。</p></div><span class="page-chip">架空データのみ</span></div>
     <div class="invoice-controls"><label class="field"><span>対象年月</span><input type="month" id="invoice-month" min="0001-01" max="9999-12" value="${view.month}" required></label><label class="field"><span>取引先</span><select id="invoice-customer" ${options ? '' : 'disabled'}>${options || '<option value="">取引先なし</option>'}</select></label>
     <label class="field"><span>出力の種類</span><select id="invoice-document-type"><option value="invoice" ${view.documentType === 'invoice' ? 'selected' : ''}>請求書</option><option value="monthly-detail" ${view.documentType === 'monthly-detail' ? 'selected' : ''}>月間回収明細のみ</option></select></label>
     <label class="field"><span>発行日（請求書のみ）</span><span class="invoice-date-control${view.documentType === 'invoice' ? '' : ' is-disabled'}"><input type="date" id="invoice-issue-date" min="0001-01-01" max="9999-12-31" value="${esc(view.issueDate)}" ${view.documentType === 'invoice' ? 'required' : 'disabled'}><span id="invoice-issue-date-formatted" class="invoice-date-formatted" aria-hidden="true">${issueDateLabel(view.issueDate)}</span></span></label>
     <label class="invoice-optional" ${view.documentType === 'invoice' ? '' : 'hidden'}><input type="checkbox" id="invoice-include-detail" ${view.includeMonthlyDetail ? 'checked' : ''}>月間回収明細も同じPDFに含める（任意）</label>
+    <section class="invoice-seal-controls" aria-labelledby="invoice-seal-title"><h2 id="invoice-seal-title">社印</h2><div class="invoice-seal-actions"><button type="button" class="button secondary" id="invoice-seal-choose">画像を選ぶ</button><button type="button" class="button secondary" id="invoice-seal-remove" ${view.seal ? '' : 'disabled'}>外す</button><input id="invoice-seal-file" type="file" accept="image/png" hidden></div>${sealState.storageWarning ? `<p class="form-error" role="status">${esc(sealState.storageWarning)}</p>` : ''}<p id="invoice-seal-status" role="status">${view.seal ? sealState.persisted ? 'このブラウザに保存済み' : '選択中（再読み込みで解除）' : 'ー'}</p><label class="invoice-optional"><input type="checkbox" id="invoice-seal-persist" ${sealState.persisted ? 'checked' : ''} ${view.seal ? '' : 'disabled'}>このブラウザに保存する</label><details><summary>社印の保存について</summary><p>透過PNG（5MB・4096px以内）を赤い印影として使います。画像はこのPWAから外部へ送信せず、初期状態では開いているページ内だけで保持します。「このブラウザに保存する」を選ぶと次回も使えます。別の端末やブラウザへは同期されず、ブラウザデータの消去で失われます。</p><p>共有端末では保存しないでください。保存先は暗号化された会社用保管庫ではなく、このサイトの処理やブラウザの利用者からアクセスできます。「外す」でブラウザ内の保存も解除します。保存済みPDFは変わりません。PDFの受取人は印影をコピーできるため、送付先を確認してください。</p></details></section>
     <div class="invoice-actions"><button type="button" class="button primary" id="invoice-download" ${view.count ? '' : 'disabled'}>PDFをダウンロード</button><button type="button" class="button secondary" id="invoice-print" ${view.count ? '' : 'disabled'}>印刷</button></div></div>
     <div class="invoice-guide"><p>用紙はB5縦（暫定：JIS 182×257mm）。画面とPDFは同じ配置です。初期状態では月間回収明細も含めます。不要な場合はチェックを外せます。回収時の備考は別紙に全件表示します。PDFは画像形式のため文字の選択・検索はできません。</p><p>発行日は対象月と別に選びます。会社情報・銀行情報・税率と請求先住所は設定から入力でき、このブラウザ内だけに保存されます。Google Sheetsには接続しません。税率等を保存しても税計算・端数処理の計算はまだ行いません。採番も未設定です。正式な請求額は未確定で、請求には使用できません。</p><p>参考小計は各回の重量 × 保存時の単価とその他料金の合算です。税は含めず、円単位への丸めもしていません。その他料金の月合計を「特別清掃運搬料」に1回だけ表示し、別の基本料は加えません。${view.legacyUnknown ? '旧版の不明な単価は補完していません。' : ''}</p><p>明細の「その他料金」は円です。写真の「粗大ごみ」の単位は未確認のため区別し、合計重量には可燃・不燃のkgだけを加えます。空欄は未入力で、0とは別です。</p></div>
     ${view.missing ? `<p class="invoice-warning">重量・単価・金額の不明または未入力が${view.missing}項目あります（不明・未入力あり）。参考小計は算出できません。入力済み部分の参考額: ${number(view.knownCharges)} 円。${view.lines.filter(line => line.missing).map(line => `${esc(line.title)}: ${line.missing}件の重量・単価が不明。`).join('')}</p>` : ''}
@@ -133,7 +135,7 @@ export function renderInvoiceOutput(state, selection = {}, invoiceSettings = emp
     <div id="invoice-preview" aria-live="polite">${previewHTML(view)}</div>`;
 }
 
-export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF, storageKey = INVOICE_SETTINGS_KEY, getInvoiceSettings = () => readInvoiceSettings(doc.defaultView.localStorage, storageKey).settings } = {}) {
+export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF, prepareSeal = prepareInvoiceSeal, sealStore, storageKey = INVOICE_SETTINGS_KEY, getInvoiceSettings = () => readInvoiceSettings(doc.defaultView.localStorage, storageKey).settings } = {}) {
   const host = doc.querySelector('#output-section');
   if (!host) throw new Error('出力画面が見つかりません。');
   const win = doc.defaultView, printMedia = win.matchMedia?.('print');
@@ -141,7 +143,67 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   // No persisted enclosure setting exists, and report/issuer storage is untouched.
   let selection = { includeMonthlyDetail: true }, disposed = false, busy = false, revision = 0, generated = null;
   const downloadURLs = new Map();
-  const build = (options = selection) => buildInvoicePreview(getState(), options, getInvoiceSettings());
+  let seal = null, sealPersisted = false, sealBusy = false, sealRevision = 0, sealOperation = 0, sealStorageWarning = '';
+  const privateSealStore = sealStore || createSealStore(win.indexedDB);
+  const build = (options = selection) => ({ ...buildInvoicePreview(getState(), options, getInvoiceSettings()), seal, sealRevision });
+  function setSealBusy(value) {
+    sealBusy = value;
+    for (const id of ['invoice-seal-choose', 'invoice-seal-remove', 'invoice-seal-persist']) {
+      const element = host.querySelector(`#${id}`);
+      if (element) element.disabled = value || (id !== 'invoice-seal-choose' && !seal);
+    }
+    setBusy(busy);
+  }
+  function replaceSeal(value, persisted = false) {
+    seal = validateCanonicalSeal(value); sealPersisted = persisted; sealRevision++;
+    refresh();
+  }
+  async function loadSavedSeal() {
+    const token = ++sealOperation; setSealBusy(true);
+    try {
+      const saved = await privateSealStore.load();
+      if (!disposed && token === sealOperation && saved) replaceSeal(saved, true);
+    } catch (error) {
+      // Unsupported storage never blocks the memory-only path.
+      if (!disposed && token === sealOperation) { sealStorageWarning = '保存済みの社印を確認できません。画像の一時利用は可能ですが、ブラウザ内の旧保存は未確認です。'; refresh(); }
+    } finally { if (!disposed && token === sealOperation) setSealBusy(false); }
+  }
+  function invalidateSealPDF() { revision++; sealRevision++; retireGenerated(); }
+  async function changeSealFile(file) {
+    if (!file || sealBusy) return;
+    invalidateSealPDF();
+    const token = ++sealOperation; setSealBusy(true);
+    try {
+      const next = validateCanonicalSeal(await prepareSeal(file, doc));
+      if (disposed || token !== sealOperation) return;
+      if (sealPersisted) await privateSealStore.remove();
+      if (disposed || token !== sealOperation) return;
+      replaceSeal(next, false);
+    } catch (error) { if (!disposed && token === sealOperation) showError(error.message || '社印の画像を読み取れません。'); }
+    finally { if (!disposed && token === sealOperation) { setSealBusy(false); const input = host.querySelector('#invoice-seal-file'); if (input) input.value = ''; } }
+  }
+  async function persistSeal(checked) {
+    if (sealBusy || !seal) return;
+    const token = ++sealOperation; setSealBusy(true);
+    try {
+      if (checked) await privateSealStore.save(seal); else await privateSealStore.remove();
+      if (disposed || token !== sealOperation) return;
+      sealPersisted = checked; sealStorageWarning = ''; refresh();
+    } catch (error) { if (!disposed && token === sealOperation) { host.querySelector('#invoice-seal-persist').checked = sealPersisted; showError(error.message || '社印を保存できませんでした。'); } }
+    finally { if (!disposed && token === sealOperation) setSealBusy(false); }
+  }
+  async function removeSeal() {
+    if (sealBusy) return;
+    invalidateSealPDF();
+    const token = ++sealOperation; setSealBusy(true);
+    try {
+      if (sealPersisted || sealStorageWarning) await privateSealStore.remove();
+      sealStorageWarning = '';
+      if (disposed || token !== sealOperation) return;
+      replaceSeal(null);
+    } catch (error) { if (!disposed && token === sealOperation) showError(error.message || '保存した社印を解除できません。'); }
+    finally { if (!disposed && token === sealOperation) setSealBusy(false); }
+  }
   function retireGenerated() {
     const url = generated?.url;
     generated = null;
@@ -168,7 +230,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   function setBusy(value) {
     busy = value;
     const count = (() => { try { return build(controlsSelection()).count; } catch { return 0; } })();
-    for (const id of ['invoice-download', 'invoice-print']) { const button = host.querySelector(`#${id}`); if (button) button.disabled = value || !count; }
+    for (const id of ['invoice-download', 'invoice-print']) { const button = host.querySelector(`#${id}`); if (button) button.disabled = value || sealBusy || !count; }
     const button = host.querySelector('#invoice-download'); if (button) { button.textContent = value ? 'PDFを作成中…' : 'PDFをダウンロード'; button.setAttribute('aria-busy', String(value)); }
   }
   function refresh() {
@@ -179,7 +241,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     try { settings = validateInvoiceSettings(getInvoiceSettings()); } catch (failure) { error = failure; settings = emptyInvoiceSettings(); }
     const view = buildInvoicePreview(getState(), selection, settings);
     selection = { month: view.month, customerId: view.customer?.id, issueDate: view.issueDate, documentType: view.documentType, includeMonthlyDetail: view.includeMonthlyDetail };
-    host.innerHTML = renderInvoiceOutput(getState(), selection, settings); setBusy(busy);
+    host.innerHTML = renderInvoiceOutput(getState(), selection, settings, { seal, persisted: sealPersisted, storageWarning: sealStorageWarning }); setSealBusy(sealBusy);
     if (error) showError(error.message || '自社情報・請求先住所を読み取れません。', true);
   }
   function showError(message, invalid = false) {
@@ -199,6 +261,8 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     if (event.target.id === 'invoice-issue-date') { const label = host.querySelector('#invoice-issue-date-formatted'); if (label) label.textContent = issueDateLabel(event.target.value); }
   };
   const change = event => {
+    if (event.target.id === 'invoice-seal-file') { void changeSealFile(event.target.files?.[0]); return; }
+    if (event.target.id === 'invoice-seal-persist') { void persistSeal(event.target.checked); return; }
     if (!['invoice-month', 'invoice-customer', 'invoice-issue-date', 'invoice-document-type', 'invoice-include-detail'].includes(event.target.id)) return;
     updateIssueDateLabel(event);
     const focusId = event.target.id;
@@ -207,10 +271,12 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     catch (error) { showError(error.message, true); }
   };
   const click = async event => {
+    if (event.target.closest('#invoice-seal-choose')) { if (!sealBusy) host.querySelector('#invoice-seal-file').click(); return; }
+    if (event.target.closest('#invoice-seal-remove')) { await removeSeal(); return; }
     const saveLink = event.target.closest('#invoice-save-link');
     if (saveLink) {
       let current = false;
-      try { current = !disposed && !host.hidden && Boolean(generated) && saveLink.getAttribute('href') === generated.url && JSON.stringify(build(controlsSelection())) === generated.snapshot; } catch { /* Invalid selection is stale. */ }
+      try { current = !disposed && !sealBusy && !host.hidden && Boolean(generated) && saveLink.getAttribute('href') === generated.url && JSON.stringify(build(controlsSelection())) === generated.snapshot; } catch { /* Invalid selection is stale. */ }
       if (!current) {
         event.preventDefault(); retireGenerated();
         host.querySelector('#invoice-download-status').textContent = '';
@@ -230,7 +296,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
       host.querySelector('#invoice-download-status').textContent = 'PDFを作成しています。';
       const blob = await createPDF(view, doc);
       if (disposed || host.hidden) return;
-      if (revision !== started || JSON.stringify(build()) !== snapshot) {
+      if (sealBusy || revision !== started || JSON.stringify(build()) !== snapshot) {
         host.querySelector('#invoice-download-status').textContent = '';
         showError('作成中に対象や記録が変わりました。最新の内容を確認して、もう一度PDFを作成してください。'); return;
       }
@@ -254,7 +320,10 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   host.addEventListener('input', updateIssueDateLabel); host.addEventListener('change', change); host.addEventListener('click', click);
   win.addEventListener('beforeprint', beforePrint); win.addEventListener('afterprint', finishPrint);
   printMedia?.addEventListener('change', printMediaChange);
-  refresh();
-  return { refresh, destroy() { disposed = true; revision++; doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
+  const clearSealMemory = () => { sealOperation++; seal = null; sealPersisted = false; sealRevision++; sealBusy = false; retireGenerated(); host.querySelectorAll('[data-invoice-seal]').forEach(element => element.remove()); const input = host.querySelector('#invoice-seal-file'); if (input) input.value = ''; };
+  const pageShow = event => { if (event.persisted && !disposed) { refresh(); if (sealStore || win.indexedDB) void loadSavedSeal(); } };
+  win.addEventListener('pagehide', clearSealMemory); win.addEventListener('pageshow', pageShow);
+  refresh(); if (sealStore || win.indexedDB) void loadSavedSeal();
+  return { refresh, destroy() { disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
 }
 
