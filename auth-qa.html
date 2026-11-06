@@ -1,0 +1,17 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RouteNote Googleログイン確認</title><style>body{font:18px system-ui;max-width:600px;margin:40px auto;padding:20px;line-height:1.7}button{font:inherit;padding:12px 18px;margin:6px}#status{white-space:pre-wrap}</style><h1>RouteNote Googleログイン確認</h1><p>Googleアカウントの確認だけを行います。スプレッドシートには接続しません。</p><p id="status" role="status">認証を準備しています…</p><button id="login" disabled>Googleでログイン</button><button id="logout" hidden>ログアウト</button><script type="module">
+import {initializeGoogleSession} from './src/firebase-driver.js';
+const status=document.querySelector('#status'),login=document.querySelector('#login'),logout=document.querySelector('#logout');
+try {
+ const session=await initializeGoogleSession();
+ const render=s=>{
+  login.disabled=['loading','signing-in','signing-out'].includes(s.status);login.hidden=!!s.user;
+  logout.hidden=!s.user;logout.disabled=['loading','signing-in','signing-out'].includes(s.status);
+  status.textContent=s.user?`${navigator.onLine?'Googleログイン済み':'オフライン：前回のGoogleアカウント'}\n${s.user.email}\nシートは未接続です。`:s.status==='loading'?'認証を確認しています…':s.status==='signing-in'?'Googleログイン中…':'Google未ログイン';
+  if(s.message)status.textContent+='\n'+s.message;
+ };
+ session.subscribe(render);
+ window.addEventListener('offline',()=>render(session.state));
+ window.addEventListener('online',()=>render(session.state));
+ login.onclick=()=>session.signIn();logout.onclick=()=>session.signOut();
+} catch {status.textContent='Google認証を読み込めませんでした。接続を確認してページを開き直してください。';}
+</script></html>

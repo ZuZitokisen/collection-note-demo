@@ -1,5 +1,5 @@
-const VERSION = '0.5.15';
-const CACHE = 'work-report-shell-v29';
+const VERSION = '0.5.16';
+const CACHE = 'work-report-shell-v30';
 const PREFIX = 'work-report-shell-';
 const ROOT = new URL('./', self.location.href);
 const ASSETS = ['index.html', 'styles.css', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/invoice-seal.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/invoice-seal-lowres.png', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
