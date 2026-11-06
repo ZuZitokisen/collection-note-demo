@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "回収ノート",
-  "short_name": "回収ノート",
+  "name": "RouteNote",
+  "short_name": "RouteNote",
   "description": "日次計量の記録・集計。入力はこのブラウザ内に保存します。",
   "lang": "ja",
   "start_url": "./",
