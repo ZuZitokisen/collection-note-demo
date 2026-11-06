@@ -56,7 +56,7 @@ function auditEvent(action, before, after, actor, now, id) {
   return { id, recordId: (after ?? before).id, action, actor, timestamp: now, version: (after ?? before).version, before: clone(before), after: clone(after) };
 }
 function ensureUnique(state, fields, exceptId) {
-  if (state.records.some(record => !record.deleted && record.id !== exceptId && record.date === fields.date && record.customerId === fields.customerId)) throw new DuplicateError(`${fields.date}・${customerName(fields.customerId)}の記録がすでにあります。一覧から既存記録を編集してください。同日複数回の扱いは未確定のため、自動追加・上書きはしません。`);
+  if (state.records.some(record => !record.deleted && record.id !== exceptId && record.date === fields.date && record.customerId === fields.customerId)) throw new DuplicateError(`${fields.date}・${customerName(fields.customerId)}の記録がすでにあります。一覧から既存記録を編集してください。同日複数回の記録にはまだ対応していないため、自動追加・上書きはしません。`);
 }
 export function createReport(state, input, actor, { now = new Date().toISOString(), id = crypto.randomUUID() } = {}) {
   validPerson(actor, '今回の入力者・編集者');
