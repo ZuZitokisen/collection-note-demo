@@ -1,4 +1,5 @@
-// Printed-photo layout, with fictional/unconfigured identity fields only.
+import { INVOICE_BANK_TYPES } from './invoice-settings.js';
+// Printed-photo layout. Identity is optional, explicitly configured, and local only.
 // Coordinates are millimetres. JIS B5 is provisional within the user's B5 request.
 export const INVOICE_GEOMETRY = Object.freeze({
   pageWidth: 182, pageHeight: 257, pdfWidth: 182 * 72 / 25.4, pdfHeight: 257 * 72 / 25.4,
@@ -30,19 +31,46 @@ function wrap(value, maxChars = 48) {
   }
   return result;
 }
+// Every line uses the same left origin, including company/name lines. Leading
+// placeholder brackets and whitespace created a visible half-glyph indent.
+function identityCells(view) {
+  const issuer = view.issuer || {}, recipient = view.recipient || {};
+  const value = item => safeText(item).trim();
+  const postal = item => value(item) ? `〒${value(item).replace(/^〒\s*/, '')}` : '郵便番号 未設定';
+  const address = (item, missing) => value(item) ? value(item).split('\n').map(line => line.trim()) : [missing];
+  const recipientLines = [
+    ['recipient-postal', postal(recipient.postalCode)],
+    ...address(recipient.address, '宛先住所 未設定').map((line, i) => [i ? `recipient-address-${i + 1}` : 'recipient-address', line]),
+    ['recipient', `${value(view.customer.name)}　御中`]
+  ];
+  const issuerLines = [
+    ['issuer-postal', postal(issuer.postalCode)],
+    ...address(issuer.address, '発行者住所 未設定').map((line, i) => [i ? `issuer-address-${i + 1}` : 'issuer-address', line]),
+    ['issuer', value(issuer.tradeName) || '会社名・屋号 未設定'],
+    ['issuer-name', value(issuer.legalName) || '法人名・氏名 未設定'],
+    ['issuer-registration', `登録番号：${value(issuer.registrationNumber) || '未設定'}`]
+  ];
+  return [
+    ...recipientLines.map(([key, value], i) => text(key, value, INVOICE_GEOMETRY.left, 40 + i * (16 / (recipientLines.length - 1)), { maxWidth: 79, size: key === 'recipient' ? 3.6 : 3.2, align: 'left', forceFit: true })),
+    ...issuerLines.map(([key, value], i) => text(key, value, 96, 62 + i * (28 / (issuerLines.length - 1)), { maxWidth: 65, bold: key === 'issuer-name', align: 'left', forceFit: true }))
+  ];
+}
+function bankCells(view) {
+  return [0, 1].flatMap(index => {
+    const account = view.bankAccounts?.[index] || {};
+    const configured = Object.values(account).some(value => String(value || '').trim());
+    if (!configured) return [text(`bank-${index + 1}`, `振込先${index + 1}　金融機関・支店・口座情報：未設定`, INVOICE_GEOMETRY.left, index ? 243 : 236, { size: 2.9, maxWidth: 124, bold: true, forceFit: true })];
+    const value = key => safeText(account[key]).trim() || '未設定';
+    return [text(`bank-${index + 1}`, `振込先${index + 1}　${value('bankName')}　${value('branchName')}　${INVOICE_BANK_TYPES[account.accountType] || '口座種別 未設定'}`, INVOICE_GEOMETRY.left, index ? 242 : 233, { size: 2.9, maxWidth: 124, bold: true, forceFit: true }),
+      text(`bank-${index + 1}-account`, `口座番号：${value('accountNumber')}　口座名義：${value('accountHolder')}`, INVOICE_GEOMETRY.left, index ? 246 : 237, { size: 2.6, maxWidth: 124, forceFit: true })];
+  });
+}
 function invoicePage(view, hasNotes) {
   const { left, right, columns } = INVOICE_GEOMETRY;
   const cells = [
     text('title', '請求書', 91, 25, { size: 3.8, align: 'center' }),
     text('issue-date', eraDate(view.issueDate), 157, 33, { align: 'right' }),
-    text('recipient-postal', '〒［郵便番号 未設定］', left, 40),
-    text('recipient-address', '［宛先住所 未設定］', left, 48),
-    text('recipient', `${view.customer.name}　御中`, 41, 56, { maxWidth: 79, size: 3.6 }),
-    text('issuer-postal', '〒［郵便番号 未設定］', 96, 62, { maxWidth: 65 }),
-    text('issuer-address', '［発行者住所 未設定］', 96, 69, { maxWidth: 65 }),
-    text('issuer', 'サンプル回収サービス（架空）', 96, 76, { maxWidth: 65 }),
-    text('issuer-name', '［発行者名 未設定］', 96, 83, { maxWidth: 65, bold: true }),
-    text('issuer-registration', '登録番号：未設定', 96, 90, { maxWidth: 65 }),
+    ...identityCells(view),
     text('total-label', 'ご請求金額　¥', left, 100),
     text('total-top', '未確定', 81, 100, { align: 'right' })
   ];
@@ -52,9 +80,9 @@ function invoicePage(view, hasNotes) {
     const start = left + sum(columns.slice(0, i)), width = columns[i];
     cells.push(text(`header-${i}`, value, i === 0 ? start : i === 4 ? start + width : start + width / 2, 112, { align: i === 0 ? 'left' : i === 4 ? 'right' : 'center' }));
   });
-  const lineRows = [[`特別清掃運搬料（${Number(view.month.slice(5))}月分）`, '未設定', '—', '式', '未設定'],
+  const otherAmount = view.other.entered ? num(view.other.amount) : '未入力';
+  const lineRows = [[`特別清掃運搬料（${Number(view.month.slice(5))}月分）`, otherAmount, view.other.entered ? '1' : '—', '式', otherAmount],
     ...view.lines.map((item, i) => [`処理手数料　${i === 0 ? '可燃' : '不燃'}`, !item.entered ? '未入力' : item.missing ? '不明あり' : item.rates.length === 1 ? num(item.rates[0]) : '複数単価', quantityText(item), 'kg', !item.entered ? '未入力' : num(item.amount)])];
-  if (view.other.entered) lineRows.push(['粗大ごみ・その他', num(view.other.amount), '1', '式', num(view.other.amount)]);
   lineRows.forEach((values, row) => values.forEach((value, col) => {
     const start = left + sum(columns.slice(0, col)), width = columns[col];
     cells.push(text(`line-${row}-${col}`, value, col === 0 || col === 3 ? start : start + width - 1, 120 + row * 7, { maxWidth: width - 2, align: col === 0 || col === 3 ? 'left' : 'right', bold: col === 0 }));
@@ -65,11 +93,10 @@ function invoicePage(view, hasNotes) {
     text('total-bottom-label', '合計', 99, 197), text('total-bottom', '未確定', right, 197, { align: 'right' }),
     text('tax-title', '税率別内訳', left, 205, { bold: true }),
     text('tax-net-label', '税抜金額', left, 212), text('tax-net', '未確定', 84, 212, { align: 'right' }),
-    text('tax-label', '消費税額（税率未設定）', left, 219, { size: 2.9, maxWidth: 43 }), text('tax-value', '未確定', 84, 219, { align: 'right', size: 2.9 }),
+    text('tax-label', '消費税額（計算未確定）', left, 219, { size: 2.9, maxWidth: 43 }), text('tax-value', '未確定', 84, 219, { align: 'right', size: 2.9 }),
     text('tax-inclusive-label', '税込金額', left, 226), text('tax-inclusive', '未確定', 84, 226, { align: 'right' }),
-    text('bank-1', '＊振込先①＊ 金融機関・支店・口座情報：未設定', left, 236, { size: 2.9, maxWidth: 124, bold: true }),
-    text('bank-2', '　振込先②　 金融機関・支店・口座情報：未設定', left, 243, { size: 2.9, maxWidth: 124, bold: true }),
-    text('draft-note', '見本：基本料・税額未設定。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
+    ...bankCells(view),
+    text('draft-note', '見本：税額未確定。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
   [207, 214, 221, 228].forEach(y => rules.push(line(left, y, 85, y)));
   return { kind: 'invoice', cells, rules };
 }
