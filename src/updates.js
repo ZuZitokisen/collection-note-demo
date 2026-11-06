@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.15';
-export const RELEASE_CHANGES = ["集計の可燃・不燃・その他を横3列にし、保存単価をkgのすぐ横へ表示します", "総計は次の段の全幅へまとめ、計算式と結果を一行にしました", "会社名の右の「詳細」で、日付別の記録と金額を確認できます", "対象なしの金額は0円、不明な金額は「—」と表示します", "不要な説明・内訳プルダウン・開発用の細かな表示を整理しました"];
+export const APP_VERSION = '0.5.16';
+export const RELEASE_CHANGES = ["集計の総計欄と日付別の詳細で、重量×保存単価の計算式を列を揃えて表示します", "保存単価が異なる記録は、単価ごとの式を足し合わせます", "日付から合計までを上段と同じ左右幅へ揃え、余白を詰めました", "日常画面の細かな版表記を整理しました"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
