@@ -55,3 +55,6 @@
 .invoice-date-control.is-disabled input{cursor:default}
 .invoice-settings-fields select{width:100%;max-width:100%;font:inherit;font-size:16px;min-height:48px}
 .invoice-bank-group+.invoice-bank-group{border-top:1px solid var(--line);padding-top:18px;margin-top:22px}.invoice-bank-group h3{font-size:16px;margin:18px 0 10px}
+
+/* Private local seal controls. Never part of printed document content. */
+.invoice-seal-controls{grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px;min-width:0}.invoice-seal-controls h2{font-size:15px;margin:0 0 10px}.invoice-seal-actions{display:flex;flex-wrap:wrap;gap:8px}.invoice-seal-actions .button{min-height:44px}.invoice-seal-controls p,.invoice-seal-controls details{font-size:12px;line-height:1.7;color:var(--muted);overflow-wrap:anywhere}.invoice-seal-controls summary{cursor:pointer;min-height:44px;display:flex;align-items:center}.invoice-seal-controls .invoice-optional{min-height:44px}.invoice-seal-controls input[hidden]{display:none}
