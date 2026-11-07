@@ -71,3 +71,12 @@ test('session retry preserves app dialog requested during first preparation',asy
  const ui=installEntrySurface({doc:dom.window.document,initialize:async()=>session,online:()=>true,loadApp:async()=>{if(++calls===1){dialog.showModal();throw Object.assign(Error('changed'),{code:'startup-session-changed'});}}});
  await tick();assert.equal(opened,0);await ui.gate.start();await tick();assert.equal(opened,1);assert.equal(ui.gate.started,true);dom.window.close();
 });
+
+test('only explicit workspace pending mode displays preparation guidance and retry remains usable',async()=>{
+ let calls=0;const h=harness({signedIn:true,loadApp:async()=>{if(++calls===1)throw Object.assign(Error('private mode details'),{code:'WORKSPACE_NOT_ENABLED'});}});
+ await tick();assert.equal(h.ui.entry.querySelector('[role="status"]').textContent,'接続を準備中です。少し待って再試行してください。');assert.equal(h.ui.root.hidden,true);assert.equal(h.ui.root.inert,true);assert.equal(h.ui.gate.started,false);
+ const retry=[...h.ui.entry.querySelectorAll('button')].find(b=>b.textContent==='もう一度確認');assert.equal(retry.hidden,false);retry.click();await tick();assert.equal(calls,2);assert.equal(h.ui.gate.started,true);assert.equal(h.ui.entry.hidden,true);h.dom.window.close();
+ for(const code of ['NOT_CONFIGURED','UNAUTHENTICATED','NETWORK_ERROR']){
+  const other=harness({signedIn:true,loadApp:async()=>{throw Object.assign(Error('private failure details'),{code});}});await tick();assert.doesNotMatch(other.ui.entry.textContent,/接続を準備中/);assert.match(other.ui.entry.textContent,/起動確認: APP/);assert.doesNotMatch(other.ui.entry.textContent,/private failure details/);assert.equal(other.ui.root.hidden,true);other.dom.window.close();
+ }
+});
