@@ -277,3 +277,18 @@ dialog[open]:not(.available-update-dialog) { animation:dialog-fade-in 160ms ease
 #google-entry .google-entry-activity[hidden]{display:none!important}
 @keyframes google-entry-loading{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){#google-entry .google-entry-activity{animation:none}}
+
+/* Approved summary-only addition: aligned category boxes and total equation. */
+#summary-list .summary-values { --summary-column-gap:8px; gap:var(--summary-column-gap); }
+#summary-list .summary-values>div { position:relative; }
+#summary-list .summary-values>div+div::before { content:"＋"; position:absolute; left:calc(var(--summary-column-gap) / -2); top:50%; transform:translate(-50%,-50%); z-index:1; color:var(--ink); font-size:13px; line-height:1; background:var(--card,#fff); border-radius:50%; }
+.summary-total-grid { --summary-column-gap:8px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:var(--summary-column-gap); background:#efdedb; border-radius:10px; padding:8px 0; font-size:12px; line-height:1.65; font-variant-numeric:tabular-nums; }
+.summary-total-grid>.summary-total-heading { grid-column:1 / -1; grid-row:1; text-align:left; padding:0 8px 4px; font-weight:700; }
+.summary-total-part { grid-row:2; position:relative; min-width:0; padding:0 8px; text-align:center; overflow-wrap:anywhere; }
+.summary-total-part .summary-product-term { white-space:normal; overflow-wrap:anywhere; }
+.summary-total-plus { position:absolute; left:calc(var(--summary-column-gap) / -2); top:0; transform:translateX(-50%); color:var(--muted); }
+.summary-total-grid>.summary-equation-result { grid-column:1 / -1; grid-row:3; text-align:right; padding:4px 8px 0; white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:420px) { #summary-list .summary-values,.summary-total-grid { --summary-column-gap:5px; } .summary-total-part { padding-inline:5px; } }
+@media(max-width:360px) { .summary-total-grid { font-size:11px; } }
+
+.summary-record-table>.summary-record-details>.summary-day-grid { margin-top:8px; background:transparent; white-space:normal; }
