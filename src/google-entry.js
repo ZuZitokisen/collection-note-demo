@@ -62,7 +62,7 @@ if (typeof document !== 'undefined') {
   entry.replaceChildren(heading,subtitle,status,login,retry,notice,scope,reload,node('p',''),recovery);
   const gate=createEntryGate({
     initialize:async()=> (await import('./firebase-driver.js')).initializeGoogleSession(),
-    loadApp:()=>import('./app.js'), online:()=>navigator.onLine,
+    loadApp:()=>import('./app-entry.js'), online:()=>navigator.onLine,
     show:({message,canLogin,canRetry})=>{status.textContent=message;login.disabled=!canLogin;retry.hidden=!canRetry;},
     prepare:()=>{root.hidden=false;root.inert=false;},
     close:()=>{root.hidden=true;root.inert=true;},
