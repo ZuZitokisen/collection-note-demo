@@ -16,7 +16,7 @@ export function authMessage(error) {
 export function createGoogleSession(driver) {
   let state = Object.freeze({ status: 'loading', user: null, message: '' });
   const listeners = new Set();
-  let disposed = false, busy = false;
+  let disposed = false, busy = false, signInActive = false, observedSignOut = false;
   const emit = patch => {
     if (disposed) return;
     state = Object.freeze({ ...state, ...patch });
@@ -24,17 +24,31 @@ export function createGoogleSession(driver) {
   };
   const off = driver.observe(user => {
     const identity = publicIdentity(user);
-    emit({status: identity ? 'signed-in' : 'signed-out', user: identity, message: user && !identity ? 'Googleアカウントを確認できませんでした。' : ''});
+    // A pending popup may receive the initial signed-out observation first.
+    // Keep waiting, but never retain an identity after an observed sign-out.
+    if (!user && signInActive && state.status === 'signing-in' && !state.user) return;
+    if (!identity && signInActive && state.user) observedSignOut = true;
+    const priorFailure = !state.user && ['signed-out','error'].includes(state.status) ? state.message : '';
+    emit({status: identity ? 'signed-in' : 'signed-out', user: identity, message: identity ? '' : user ? 'Googleアカウントを確認できませんでした。' : priorFailure});
   }, error => emit({status:'error',user:null,message:authMessage(error)}));
   return {
     get state() { return state; },
     subscribe(fn) { listeners.add(fn); fn(state); return () => listeners.delete(fn); },
     async signIn() {
       if (disposed || busy) return false;
-      busy = true; emit({status:'signing-in',message:''});
-      try { await driver.signIn(); return true; }
+      busy = true; signInActive = true; observedSignOut = false; emit({status:'signing-in',message:''});
+      try {
+        const credential = await driver.signIn();
+        if (disposed) return false;
+        const identity = publicIdentity(credential?.user);
+        // The SDK return is a fallback for a missing/delayed observer event,
+        // not authorization: the entry gate still checks actual currentUser.
+        if (identity && !state.user && !observedSignOut) emit({status:'signed-in',user:identity,message:''});
+        if (!state.user) { emit({status:'signed-out',user:null,message:'Googleログインの結果をこの画面で確認できませんでした。もう一度お試しください。'}); return false; }
+        return true;
+      }
       catch(error) { emit({status:state.user?'signed-in':'signed-out',message:authMessage(error)}); return false; }
-      finally { busy = false; }
+      finally { busy = false; signInActive = false; }
     },
     async signOut() {
       if (disposed || busy) return false;

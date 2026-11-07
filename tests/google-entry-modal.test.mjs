@@ -7,7 +7,7 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 function harness({signedIn=false,verify=async()=>({uid:'synthetic'}),loadApp=async()=>{},online=()=>true}={}){
  const dom=new JSDOM('<section id="google-entry"></section><div id="google-app-root" hidden inert><button>Report</button></div>',{url:'https://example.test/'});
  let listener,signIns=0;
- const session={state:{user:signedIn?{}:null},subscribe(fn){listener=fn;fn({status:signedIn?'signed-in':'signed-out'});return()=>{};},dispose(){},verifyIdentity:verify,signIn(){signIns++;return Promise.resolve();}};
+ const session={state:{status:signedIn?'signed-in':'signed-out',user:signedIn?{uid:'synthetic'}:null},subscribe(fn){listener=fn;fn({status:signedIn?'signed-in':'signed-out',user:session.state.user});return()=>{};},dispose(){},verifyIdentity:verify,signIn(){signIns++;return Promise.resolve();}};
  const ui=installEntrySurface({doc:dom.window.document,initialize:async()=>session,loadApp,online});
  return {dom,ui,session,get signIns(){return signIns;},notify(status){listener({status});}};
 }
@@ -41,10 +41,17 @@ test('native app dialogs are deferred until readiness and remain blocked if load
  for(const fails of [false,true]){
   let release,opened=0;const dom=new JSDOM('<section id="google-entry"></section><div id="google-app-root" hidden inert><dialog></dialog></div>',{url:'https://example.test/'});const dialog=dom.window.document.querySelector('dialog');dialog.inert=false;
   dialog.showModal=function(){opened++;this.open=true;};dialog.close=function(){this.open=false;};const nativeShow=dialog.showModal;
-  const session={state:{user:{}},subscribe(fn){fn({status:'signed-in'});return()=>{};},dispose(){},verifyIdentity:async()=>({uid:'synthetic'}),signIn:async()=>{}};
+  const session={state:{status:'signed-in',user:{uid:'synthetic'}},subscribe(fn){fn({status:'signed-in',user:this.state.user});return()=>{};},dispose(){},verifyIdentity:async()=>({uid:'synthetic'}),signIn:async()=>{}};
   const ui=installEntrySurface({doc:dom.window.document,initialize:async()=>session,online:()=>true,loadApp:()=>{dialog.showModal();return new Promise((resolve,reject)=>{release=fails?()=>reject(Error('failed')):resolve;});}});
   await tick();assert.equal(dialog.inert,true);assert.equal(opened,0);assert.equal(ui.root.inert,true);release();await tick();assert.equal(dialog.showModal,nativeShow);
   if(fails){assert.equal(opened,0);assert.equal(dialog.open,false);assert.equal(ui.root.hidden,true);assert.equal(ui.entry.hidden,false);}else{assert.equal(opened,1);assert.equal(dialog.inert,false);assert.equal(ui.entry.hidden,true);}
   dom.window.close();
  }
+});
+test('idle startup is only centered title and login; recovery appears only on failure',async()=>{
+ const h=harness();await tick();const card=h.ui.entry.querySelector('.google-entry-card');
+ assert.equal(card.querySelector('h1').textContent,'RouteNote');assert.equal(card.querySelector('h2'),null);assert.equal(card.querySelector('a'),null);
+ const visible=[...card.querySelectorAll('button')].filter(node=>!node.hidden);assert.deepEqual(visible.map(node=>node.textContent),['Googleでログイン']);assert.equal(card.querySelector('[role="status"]').hidden,true);assert.equal(card.querySelector('.google-entry-activity').hidden,true);
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');assert.match(css,/\.google-entry-card\{[^}]*text-align:center/);assert.match(css,/\.google-entry-action\{[^}]*align-items:center/);h.dom.window.close();
+ const fail=harness({online:()=>false});await tick();assert.equal(fail.ui.entry.querySelector('[role="status"]').hidden,false);assert.ok([...fail.ui.entry.querySelectorAll('button')].some(node=>!node.hidden&&node.textContent==='もう一度確認'));fail.dom.window.close();
 });

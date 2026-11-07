@@ -1,6 +1,10 @@
-# RouteNote v0.5.22
+# RouteNote v0.5.23
 
 https://zuzitokisen.github.io/collection-note-demo/
+
+## v0.5.23 認証状態修正
+
+Googleログイン直後の認証状態の競合を修正しました。画面構成・保存済みデータ・SDK・権限・スプレッドシートは変更しません。iOS実機での解消確認は未完了です。
 
 ## v0.5.22 画面復元
 
