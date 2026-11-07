@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {APP_VERSION,RELEASE_CHANGES} from '../src/updates.js';
+test('worker, update UI and release metadata agree',()=>{const version=JSON.parse(readFileSync(new URL('../version.json',import.meta.url)));assert.equal(APP_VERSION,version.version);assert.deepEqual(RELEASE_CHANGES,version.changes);assert.ok(readFileSync(new URL('../sw.js',import.meta.url),'utf8').includes(`const VERSION = '${APP_VERSION}';`));});
