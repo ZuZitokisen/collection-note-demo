@@ -384,11 +384,12 @@ window.addEventListener('beforeunload',e=>{if(reportDirty||modalDirty||priceDirt
 window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(next===currentRoute)return;if(reportDirty||modalDirty||priceDirty||reorderDirty()||invoiceSettings?.isDirty()){history.replaceState(null,'','#'+currentRoute);discard(()=>{location.hash=next;switchPage(next);});}else switchPage(next);});
 window.addEventListener('storage',e=>{if(e.key!==APP_STORAGE_KEY&&e.key!==null)return;try{const next=read();if(!next)throw new Error('別の操作で保存データが消えました。');state=next;renderSecondary();if(!reportDirty&&!pending)renderReport();toast('別の画面の更新を読み込みました。入力中の内容はそのままです。');ensureDemoSession();}catch(error){fail(error);}});
 sheetConnection=installSheetConnection({doc:document});
-initialize(()=>{$('#calculation-sample-banner').hidden=!IS_CALCULATION_SAMPLE;for(const selector of ['#desktop-nav','#mobile-nav'])$(selector).innerHTML=Object.entries(pages).map(([key,[label,icon]])=>`<button class="${selector==='#desktop-nav'?'nav-item':''}" data-nav="${key}"><span aria-hidden="true">${navIcon(key)}</span>${label}</button>`).join('');$('#browse-month').value=localDate().slice(0,7);renderReport();setPeriod('month');renderSecondary();switchPage(location.hash.slice(1));
+export const appReady=new Promise((resolve,reject)=>{initialize(()=>{try{$('#calculation-sample-banner').hidden=!IS_CALCULATION_SAMPLE;for(const selector of ['#desktop-nav','#mobile-nav'])$(selector).innerHTML=Object.entries(pages).map(([key,[label,icon]])=>`<button class="${selector==='#desktop-nav'?'nav-item':''}" data-nav="${key}"><span aria-hidden="true">${navIcon(key)}</span>${label}</button>`).join('');$('#browse-month').value=localDate().slice(0,7);renderReport();setPeriod('month');renderSecondary();switchPage(location.hash.slice(1));
 invoiceSettings=installInvoiceSettings({doc:document,storageKey:ISSUER_STORAGE_KEY,onChange:()=>renderIssuerPanel()});
 renderSettings();
 invoiceOutput=installInvoiceOutput({doc:document,getState:()=>state,getInvoiceSettings:()=>invoiceSettings.getSettings(),storageKey:ISSUER_STORAGE_KEY});
 installInputAssist();
 startUpdates({guard:discard,canReload:()=>!reportDirty&&!modalDirty&&!priceDirty&&!reorderDirty()&&!masterReorder?.dragging&&!pending&&!invoiceSettings?.isDirty()&&!invoiceSettings?.isBusy()});
 ensureDemoSession();
-});
+resolve();
+}catch(error){reject(error);}});});
