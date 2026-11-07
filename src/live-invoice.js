@@ -59,9 +59,15 @@ export function installLiveInvoiceOutput({host,api,session,makePDF=createInvoice
   let active=false, disposed=false, generation=0, controller=null, summary=null, view=null, blobURL=null, printing=false;
   host.innerHTML = '<h2>実シート帳票</h2><p data-notice></p><div class="invoice-controls"><label>対象月<input type="month" data-month></label><label>取引先<select data-customer></select></label><label>帳票<select data-kind><option value="monthly-detail">月間回収明細（確認用）</option><option value="invoice">請求書（未確定）</option></select></label><fieldset data-issuer-inputs autocomplete="off"><legend>発行者・振込先（今回の手入力）</legend><p>会社情報・口座情報は自動入力しません。この画面内だけで使用し、サーバーやブラウザ保存領域に保存しません。画面移動・ログアウトで消去します。宛先の取引先名・住所は実シートの最新情報を使用します。</p><label>会社名・氏名<input data-entry="legalName" maxlength="120" autocomplete="off"></label><label>発行者郵便番号<input data-entry="postalCode" maxlength="20" autocomplete="off"></label><label>発行者住所（3行まで）<textarea data-entry="address" maxlength="240" rows="3" autocomplete="off"></textarea></label><label>TEL<input data-entry="phone" maxlength="60" autocomplete="off"></label><label>登録番号<input data-entry="registrationNumber" maxlength="60" autocomplete="off"></label><label>請求番号<input data-entry="invoiceNumber" maxlength="60" autocomplete="off"></label><label>振込先（金融機関・支店・種別・口座番号・名義、3行まで）<textarea data-entry="bankInstructions" maxlength="360" rows="3" autocomplete="off"></textarea></label></fieldset><button type="button" data-refresh>最新集計を読込</button><button type="button" data-preview>確認用プレビュー</button><label><input type="checkbox" data-confirm>手入力した発行者・振込先、シート由来の宛先と金額を確認し、未確定の確認用帳票として表示・保存する</label><button type="button" data-pdf>確認用PDFを保存</button><button type="button" data-print>確認用帳票を印刷</button></div><p role="status" data-status></p><div data-preview-host></div>';
   const q=s=>host.querySelector(s), month=q('[data-month]'), select=q('[data-customer]'), kind=q('[data-kind]'), preview=q('[data-preview-host]'), status=q('[data-status]'), confirm=q('[data-confirm]');
+  host.setAttribute('data-live-invoice-ui','');
+  for(const label of host.querySelectorAll('label')) label.classList.add('field');
+  confirm.parentElement.className='invoice-optional';
+  for(const button of host.querySelectorAll('button')) button.className='button secondary';
+  q('[data-pdf]').className='button primary';
+  for(const name of ['address','bankInstructions']) q(`[data-entry="${name}"]`).parentElement.classList.add('live-wide');
   q('[data-notice]').textContent=DRAFT;
   month.value=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit'}).format(new Date());
-  const style=doc.createElement('style'); style.textContent='@media print{[data-issuer-inputs]{display:none!important}body:has([data-live-print]) *{visibility:hidden!important} [data-live-print],[data-live-print] *{visibility:visible!important} [data-live-print]{position:absolute;inset:0} [data-live-print] .invoice-paper{width:182mm;height:257mm;break-after:page} [data-live-print] svg{width:182mm;height:257mm} [data-live-print] .invoice-paper:last-child{break-after:auto}}';host.append(style);
+
   const entries = [...host.querySelectorAll('[data-entry]')];
   function clearEntries() { for (const entry of entries) entry.value=''; }
   function readEntries() { const result={}; for(const entry of entries) { if(entry.value.length>Number(entry.maxLength)) fail('入力内容が長すぎます。'); result[entry.dataset.entry]=entry.value.trim(); } if(result.address.split('\n').length>3 || result.address.split('\n').some(line=>line.length>80)) fail('発行者住所は1行80文字以内・3行までで入力してください。'); if(result.bankInstructions.split('\n').length>3 || result.bankInstructions.split('\n').some(line=>line.length>120)) fail('振込先は1行120文字以内・3行までで入力してください。'); return result; }
@@ -101,8 +107,11 @@ export function installLiveInvoiceOutput({host,api,session,makePDF=createInvoice
   }
   const listeners=[];function on(target,event,fn){target.addEventListener(event,fn);listeners.push(()=>target.removeEventListener(event,fn));}
   on(q('[data-refresh]'),'click',()=>refresh());on(q('[data-preview]'),'click',()=>action('preview'));on(q('[data-pdf]'),'click',()=>action('pdf'));on(q('[data-print]'),'click',()=>action('print'));
-  for(const input of entries)on(input,'input',()=>{generation++;controller?.abort();clear();});
-  on(month,'change',()=>refresh());for(const element of [select,kind])on(element,'change',()=>{generation++;controller?.abort();clear();});
+  // Kind/customer/issuer edits invalidate document work only. A summary load
+  // has no document yet and must finish even if these controls are edited.
+  function invalidateOutput() {if(summary){generation++;controller?.abort();}clear();}
+  for(const input of entries)on(input,'input',invalidateOutput);
+  on(month,'change',()=>refresh());for(const element of [select,kind])on(element,'change',invalidateOutput);
   on(win,'pagehide',()=>{active=false;clearEntries();invalidate();});on(win,'pageshow',event=>{if(event.persisted){active=false;clearEntries();invalidate();}});
   on(doc,'visibilitychange',()=>{if(doc.visibilityState==='hidden')invalidate();});
   on(win,'beforeprint',()=>{if(!printing)invalidate();});on(win,'afterprint',()=>invalidate());

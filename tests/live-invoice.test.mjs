@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -78,6 +79,19 @@ test('B5 issuer address has bounded lines and native printing hides raw entry co
  const h=await harness();const address=h.host.querySelector('[data-entry="address"]');
  for(const value of ['一\n二\n三\n四','字'.repeat(81)]) {address.value=value;h.host.querySelector('[data-confirm]').checked=true;h.host.querySelector('[data-preview]').click();await tick();assert.equal(h.calls.length,0);assert.match(h.host.querySelector('[data-status]').textContent,/3行/);}
  address.value='一\n二\n三';h.host.querySelector('[data-confirm]').checked=true;h.host.querySelector('[data-preview]').click();await tick();assert.ok(h.host.querySelector('svg'));
- const printCSS=h.host.querySelector('style').textContent;assert.match(printCSS,/@media print\{\[data-issuer-inputs\]\{display:none!important\}/);
+ const printCSS=readFileSync(new URL('../invoice.css',import.meta.url),'utf8');assert.match(printCSS,/@media print\{\[data-issuer-inputs\]\{display:none!important\}/);
  h.dom.window.dispatchEvent(new h.dom.window.Event('beforeprint'));assert.equal(h.host.querySelector('svg'),null);h.control.destroy();
+});
+
+test('kind and issuer edits during pending summary load do not abort or strand refresh',async()=>{
+ let reads=0,release,signal;const h=await harness({api:{readBilling:async args=>{if(++reads===1)return summary();signal=args.signal;return new Promise(resolve=>release=resolve);}}});
+ const loading=h.control.refresh('2024-02');await tick();assert.ok(release);assert.equal(h.host.querySelector('[data-customer]').options.length,0);
+ const kind=h.host.querySelector('[data-kind]');kind.value='monthly-detail';kind.dispatchEvent(new h.dom.window.Event('change'));
+ const name=h.host.querySelector('[data-entry="legalName"]');name.value='今回の会社';name.dispatchEvent(new h.dom.window.Event('input'));
+ assert.equal(signal.aborted,false);release(summary());await loading;
+ assert.equal(h.host.querySelector('[data-customer]').options.length,1);assert.match(h.host.querySelector('[data-status]').textContent,/最新集計を確認しました/);assert.equal(kind.value,'monthly-detail');assert.equal(name.value,'今回の会社');h.control.destroy();
+});
+
+test('live form uses scoped responsive fields and existing button styles',async()=>{
+ const h=await harness();assert.ok(h.host.hasAttribute('data-live-invoice-ui'));assert.ok(h.host.querySelector('[data-entry="address"]').parentElement.classList.contains('live-wide'));assert.ok(h.host.querySelector('[data-entry="phone"]').parentElement.classList.contains('field'));assert.ok(h.host.querySelector('[data-confirm]').parentElement.classList.contains('invoice-optional'));assert.ok([...h.host.querySelectorAll('button')].every(button=>button.classList.contains('button')));const css=readFileSync(new URL('../invoice.css',import.meta.url),'utf8');assert.match(css,/@media\(max-width:600px\)/);assert.match(css,/grid-column:1\/-1/);h.control.destroy();
 });
