@@ -56,7 +56,7 @@ if (typeof document !== 'undefined') {
   const login=node('button','Googleでログイン');login.type='button';login.className='button primary';login.disabled=true;
   const retry=node('button','もう一度確認');retry.type='button';retry.className='button secondary';retry.hidden=true;
   const reload=node('button','ページを再読み込み');reload.type='button';reload.className='button secondary';reload.addEventListener('click',()=>location.reload());
-  const notice=node('p','Google本人確認後にアプリへ進みます。シート閲覧では、サーバー側で登録メンバーを別途確認します。報告・設定の共有保存は準備中です。この入口だけで実データへのアクセスを許可するものではありません。');
+  const notice=node('p','Google本人確認後にアプリへ進みます。シートの表示・訂正では、サーバー側で登録メンバーを別途確認します。「このブラウザ」の試作報告・設定は共有しません。この入口だけで実データへのアクセスを許可するものではありません。');
   const scope=node('p','Googleから名前・プロフィール写真・メールアドレスを取得します。Driveやスプレッドシートの権限は要求しません。');
   const recovery=node('a','更新・復旧画面を開く');recovery.href='./update.html';
   entry.replaceChildren(heading,subtitle,status,login,retry,notice,scope,reload,node('p',''),recovery);

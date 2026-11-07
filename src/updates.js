@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.18';
-export const RELEASE_CHANGES = ["閲覧・編集から、認証後にスプレッドシートの日次記録を表示できます", "シートは閲覧のみ。ブラウザ内の報告とは分けて表示します", "保存済みの報告・設定は維持します。シートへの書込みは未接続です"];
+export const APP_VERSION = '0.5.19';
+export const RELEASE_CHANGES = ["スプレッドシートの報告を新規作成・訂正・削除・復元できます", "元データと編集履歴を残し、訂正後の値を集計・請求書に反映します", "通信結果が不明な操作は端末に保持し、同じ操作として再確認できます"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
