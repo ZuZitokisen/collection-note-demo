@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.16';
-export const RELEASE_CHANGES = ["集計の総計欄と日付別の詳細で、重量×保存単価の計算式を列を揃えて表示します", "保存単価が異なる記録は、単価ごとの式を足し合わせます", "日付から合計までを上段と同じ左右幅へ揃え、余白を詰めました", "日常画面の細かな版表記を整理しました"];
+export const APP_VERSION = '0.5.17';
+export const RELEASE_CHANGES = ["起動時にGoogleログイン画面を表示します", "設定のその他からGoogleアカウントを確認し、本体へ戻れます", "登録メンバー照合・シート接続は準備中です。保存済みの報告・設定は維持します"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');

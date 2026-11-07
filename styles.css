@@ -258,3 +258,13 @@ dialog[open]:not(.available-update-dialog) { animation:dialog-fade-in 160ms ease
 .summary-equation-result { color:var(--ink); font-size:inherit; font-weight:400; white-space:nowrap; }
 @media(max-width:420px) { .summary-record-table th:first-child { padding-left:5px; } .summary-record-table th:last-child,.summary-record-table td:last-child { padding-right:5px; } }
 @media(max-width:360px) { .summary-record-table { font-size:11px; } .summary-record-table thead th { font-size:10px; } .summary-record-table th,.summary-record-table td { padding-inline:1px; } }
+
+/* Online Google identity entry. Real-data authorization remains server-side work. */
+#google-entry{box-sizing:border-box;width:min(100%,560px);margin:0 auto;padding:clamp(32px,8vh,72px) 20px calc(32px + env(safe-area-inset-bottom));overflow-wrap:anywhere}
+#google-entry h1{font-size:30px;margin:0 0 18px;line-height:1.25}
+#google-entry h2{font-size:20px;margin:0 0 14px}
+#google-entry p{line-height:1.65}
+#google-entry .button{min-height:48px;margin-top:12px}
+#google-entry [role="status"]{white-space:pre-wrap}
+#google-entry a{color:var(--primary,#174b41);text-underline-offset:3px}
+#google-app-root[hidden]{display:none!important}
