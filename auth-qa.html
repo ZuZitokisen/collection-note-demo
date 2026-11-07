@@ -1,12 +1,42 @@
-<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="referrer" content="strict-origin-when-cross-origin"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RouteNote Googleログイン確認</title><style>body{font:18px system-ui;max-width:600px;margin:40px auto;padding:20px;line-height:1.7}button{font:inherit;padding:12px 18px;margin:6px}#status{white-space:pre-wrap}</style><h1>RouteNote Googleログイン確認</h1><p>Googleアカウントの確認だけを行います。スプレッドシートには接続しません。</p><p id="status" role="status">認証を準備しています…</p><button id="login" disabled>Googleでログイン</button><button id="logout" hidden>ログアウト</button><script type="module">
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com 'sha256-3rO6HEyN6TRyPlt5cG7D8JKbZ0+Q8lhIQWLKiJf3IZQ='; style-src 'self' 'sha256-3DD09goooik9TyZNz+M2Gk5RJXrTKTCrRb8RQAAXQV8='; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://routenote-38b82.firebaseapp.com; img-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#176553">
+<title>Googleアカウント | RouteNote</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7f5;color:#19362e;font:16px/1.65 system-ui,-apple-system,sans-serif}main{max-width:620px;margin:0 auto;padding:32px 20px calc(32px + env(safe-area-inset-bottom))}header{margin-bottom:24px}.brand{color:#476a5d;font-weight:700;margin:0 0 6px}h1{font-size:26px;line-height:1.35;margin:0}.card{background:#fff;border:1px solid #dbe5df;border-radius:18px;padding:22px;margin:18px 0}h2{font-size:18px;margin:0 0 12px}#status{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;min-height:52px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}button,.return{font:inherit;font-weight:650;min-height:48px;padding:12px 18px;border:0;border-radius:12px;text-decoration:none;text-align:center}button{color:#fff;background:#176553;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#edf3ef;color:#19362e}.return{display:block;border:1px solid #b8ccc0;color:#176553;background:#fff}button:focus-visible,a:focus-visible{outline:3px solid #cb8900;outline-offset:3px}[hidden]{display:none!important}.note{font-size:14px;color:#4d6258}.note strong{color:#294b3e}.note p{margin:8px 0}.small{font-size:13px;color:#60736a;margin-top:16px}
+</style>
+</head>
+<body><main>
+<header><p class="brand">RouteNote</p><h1>Googleアカウント</h1></header>
+<section class="card" aria-labelledby="identity-title">
+<h2 id="identity-title">Google本人確認</h2>
+<p id="status" role="status" aria-live="polite">認証を準備しています…</p>
+<div class="actions"><button id="login" type="button" disabled>Googleでログイン</button><button id="logout" class="secondary" type="button" hidden>ログアウト</button></div>
+<p class="small">ログインでは名前・プロフィール写真・メールアドレスを確認します。Driveやスプレッドシートの権限は要求しません。</p>
+</section>
+<section class="card note" aria-labelledby="membership-title">
+<h2 id="membership-title">メンバー照合は準備中です</h2>
+<p>登録メンバーのメールアドレスとの照合、利用停止の判定、実シートの利用権限はまだ接続されていません。Googleログインだけで、これらの許可が付くことはありません。</p>
+<p>本体の利用者選択は、現在はGoogleアカウントと連動しません。</p>
+</section>
+<a class="return" href="./index.html#settings">RouteNoteへ戻る</a>
+<p class="small">ログイン・ログアウトしても、このブラウザに保存した報告は削除しません。</p>
+</main>
+<script type="module">
 import {initializeGoogleSession} from './src/firebase-driver.js';
 const status=document.querySelector('#status'),login=document.querySelector('#login'),logout=document.querySelector('#logout');
 try {
  const session=await initializeGoogleSession();
  const render=s=>{
-  login.disabled=['loading','signing-in','signing-out'].includes(s.status);login.hidden=!!s.user;
-  logout.hidden=!s.user;logout.disabled=['loading','signing-in','signing-out'].includes(s.status);
-  status.textContent=s.user?`${navigator.onLine?'Googleログイン済み':'オフライン：前回のGoogleアカウント'}\n${s.user.email}\nシートは未接続です。`:s.status==='loading'?'認証を確認しています…':s.status==='signing-in'?'Googleログイン中…':'Google未ログイン';
+  const busy=['loading','signing-in','signing-out'].includes(s.status);
+  login.disabled=busy||!navigator.onLine;login.hidden=!!s.user;
+  logout.hidden=!s.user;logout.disabled=busy;
+  status.textContent=s.user?`${navigator.onLine?'Googleログイン済み':'オフライン：前回のGoogleアカウント'}\n${s.user.email}`:s.status==='loading'?'認証を確認しています…':s.status==='signing-in'?'Googleログイン中…':!navigator.onLine?'オフラインです。接続後にGoogleログインをご利用ください。':'Google未ログイン';
   if(s.message)status.textContent+='\n'+s.message;
  };
  session.subscribe(render);
@@ -14,4 +44,5 @@ try {
  window.addEventListener('online',()=>render(session.state));
  login.onclick=()=>session.signIn();logout.onclick=()=>session.signOut();
 } catch {status.textContent='Google認証を読み込めませんでした。接続を確認してページを開き直してください。';}
-</script></html>
+</script>
+</body></html>
