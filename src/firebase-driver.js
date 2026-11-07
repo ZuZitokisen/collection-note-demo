@@ -1,5 +1,5 @@
 // Public Firebase web app configuration. This is not a server credential.
-import { createGoogleSession } from './google-session.js';
+import { createGoogleSession, publicIdentity } from './google-session.js';
 const config = {
   apiKey: 'AIzaSyBcjwDYX1YjPXMRYx6ZOI6H0lX26qc8L8w',
   authDomain: 'routenote-38b82.firebaseapp.com',
@@ -18,9 +18,17 @@ export async function initializeGoogleSession() {
   await sdk.setPersistence(auth, sdk.browserSessionPersistence);
   const provider = new sdk.GoogleAuthProvider();
   provider.setCustomParameters({prompt:'select_account'});
-  return createGoogleSession({
+  const session = createGoogleSession({
     observe: (next,error) => sdk.onAuthStateChanged(auth,next,error),
     signIn: () => sdk.signInWithPopup(auth,provider),
     signOut: () => sdk.signOut(auth),
   });
+  session.verifyIdentity = async () => {
+    const user = auth.currentUser;
+    if (!user) return null;
+    await sdk.reload(user);
+    await sdk.getIdToken(user, true);
+    return auth.currentUser?.uid === user.uid ? publicIdentity(user) : null;
+  };
+  return session;
 }
