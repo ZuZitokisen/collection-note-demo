@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.20';
-export const RELEASE_CHANGES = ["報告・集計・PDFを実スプレッドシートへ接続しました", "日別・年別は実績数量、月別は現在の設定単価と基本料金で集計します", "PDFは確認用として出力し、以前の端末内データは別画面で保持します"];
+export const APP_VERSION = '0.5.21';
+export const RELEASE_CHANGES = ["帳票の会社情報・振込先の手入力欄を見やすく整えました", "集計の読込中に帳票や入力を変更しても読込が止まらないよう修正しました", "画面・印刷用スタイルを既存の安全な配信方式に統一しました"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
