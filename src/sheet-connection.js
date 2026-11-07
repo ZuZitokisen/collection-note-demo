@@ -1,22 +1,27 @@
-import {installLedgerPanel} from './ledger-panel.js';
-import {createLedgerReader} from './ledger-read-client.js';
+import {installReportsPanel} from './reports-panel.js';
+import {createReportsClient, ReportsError} from './reports-client.js';
 // Public deployment address, never a credential. Membership is checked by this server.
 const ENDPOINT='https://script.google.com/macros/s/AKfycbxhTCY4IWpOh-tEQoS24yXXQYctbpHfB-l5iQObilc1-2Jud2-0bYJFhvpnOzAZ0dF-Wg/exec';
 async function loadGoogleConnection(){
  const identity=await (await import('./firebase-driver.js')).googleApiIdentity();
- return {...identity,readPage:createLedgerReader({endpoint:ENDPOINT,getIdToken:()=>identity.getIdToken()})};
+ return {...identity,...createReportsClient({endpoint:ENDPOINT,getIdToken:()=>identity.getIdToken()})};
 }
 const authError=()=>Object.assign(new Error('Googleログインを確認してください。'),{code:'UNAUTHENTICATED'});
 export function installSheetConnection({doc=document,loadConnection=loadGoogleConnection}={}){
  const host=doc.querySelector('#sheet-ledger-panel'),local=doc.querySelector('#browse-local'),buttons=[...doc.querySelectorAll('[data-browse-source]')];
  let page='',source='local',sequence=0,unsubscribe=null,disposed=false,identityUid=null;
  function clearIdentity(){unsubscribe?.();unsubscribe=null;identityUid=null;}
- const panel=installLedgerPanel({host,readPage:async({signal})=>{
+ const panel=installReportsPanel({host,change:async(input,{expectedUid})=>{
+  const connection=await loadConnection();
+  if(disposed||connection.currentUid()!==expectedUid||identityUid!==expectedUid)throw new ReportsError('LOGIN_REQUIRED');
+  return connection.change(input);
+ },readPage:async({signal})=>{
   const request=sequence;
   const connection=await loadConnection();
   if(disposed||request!==sequence||signal.aborted)throw authError();
   const uid=connection.currentUid();if(!uid)throw authError();
-  clearIdentity();identityUid=uid;
+  clearIdentity();identityUid=uid;await panel.setIdentity(uid);
+  if(disposed||request!==sequence||signal.aborted||connection.currentUid()!==uid)throw authError();
   unsubscribe=connection.subscribe(next=>{
    if(next!==identityUid){sequence++;clearIdentity();panel.setAuthorization(false);}
   });

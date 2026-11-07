@@ -42,7 +42,7 @@ export async function initializeGoogleSession() {
   return session;
 }
 
-// The token stays in memory and is sent only to the configured read-only API.
+// The token stays in memory and is sent only to the configured reports API.
 // This is not an authorization decision; the server verifies membership on every call.
 export async function googleApiIdentity() {
  const {auth,sdk}=await googleRuntime();
