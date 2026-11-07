@@ -99,7 +99,7 @@ function invoicePage(view, hasNotes) {
     text('tax-label', '消費税額', left, 219, { size: 2.9, maxWidth: 43 }), text('tax-value', '—', 84, 219, { align: 'right', size: 2.9 }),
     text('tax-inclusive-label', '税込金額', left, 226), text('tax-inclusive', '—', 84, 226, { align: 'right' }),
     ...bankCells(view),
-    text('draft-note', '見本：税計算は未実装です。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
+    text('draft-note', view.currentSourceReference?'参考：旧記録は現在のシート単価。過去単価未確認。正式請求・振込には使用不可。':'見本：税計算は未実装です。正式な請求・振込には使用できません。', left, 250, { size: 2.2, maxWidth: 124 }));
   [207, 214, 221, 228].forEach(y => rules.push(line(left, y, 85, y)));
   return { kind: 'invoice', cells, rules, seal: validateCanonicalSeal(view.seal ?? null) };
 }
@@ -131,7 +131,7 @@ function monthlyPage(view) {
   rules.push(line(otherX, bodyBottom + 6, otherX + widths[3], bodyBottom, 0.25));
   cells.push(text('detail-unit-note', '写真の「粗大ごみ」は単位未確認のため、保存済みのその他料金（円）を表示。', left, bottom + 7, { size: 2.3, maxWidth: 132 }),
     text('detail-weight-note', '合計重量は可燃物＋不燃物のみ。その他料金を重量に加算しません。', left, bottom + 11.5, { size: 2.3, maxWidth: 132 }),
-    text('detail-amount-note', '参考金額の行は円。基本料・税を含まず、端数処理前。空欄は未入力、不明は欠損あり。', left, bottom + 16, { size: 2.2, maxWidth: 132 }));
+    text('detail-amount-note', view.currentSourceReference?'参考金額は現在のシート単価を含み、過去単価未確認。基本料・税を含まず、端数処理前。':'参考金額の行は円。基本料・税を含まず、端数処理前。空欄は未入力、不明は欠損あり。', left, bottom + 16, { size: 2.2, maxWidth: 132 }));
   return { kind: 'monthly-detail', cells, rules };
 }
 
