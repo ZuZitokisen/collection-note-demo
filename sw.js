@@ -1,5 +1,5 @@
 const VERSION = '0.5.24';
-const CACHE = 'work-report-shell-v38';
+const CACHE = 'work-report-shell-v39';
 const PREFIX = 'work-report-shell-';
 const ROOT = new URL('./', self.location.href);
 const ASSETS = ['index.html', 'styles.css', 'ledger-panel.css', 'src/ledger-panel.js', 'src/sheet-connection.js', 'src/ledger-read-client.js', 'src/reports-client.js', 'src/reports-panel.js', 'src/reports-pending.js', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/google-entry.js', 'src/firebase-driver.js', 'src/google-session.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/invoice-seal.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/invoice-seal-lowres.png', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
