@@ -392,6 +392,6 @@ installInputAssist();
 startUpdates({guard:discard,canReload:()=>!reportDirty&&!modalDirty&&!priceDirty&&!reorderDirty()&&!masterReorder?.dragging&&!pending&&!invoiceSettings?.isDirty()&&!invoiceSettings?.isBusy()});
 ensureDemoSession();
 await invoiceOutput.ready;
-if(storageFailed)throw new Error('保存済みデータの確認が完了しませんでした。');
+if(storageFailed)throw Object.assign(new Error('保存済みデータの確認が完了しませんでした。'),{code:'startup-storage'});
 resolve();
 }catch(error){reject(error);}});});

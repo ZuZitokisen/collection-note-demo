@@ -144,6 +144,9 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   let selection = { includeMonthlyDetail: true }, disposed = false, busy = false, revision = 0, generated = null;
   const downloadURLs = new Map();
   let sealIsDefault = false, sealError = '';
+  let resolveReady, rejectReady;
+  const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
+  void ready.catch(()=>{});
   let seal = null, sealPersisted = false, sealBusy = false, sealLoading = false, sealRevision = 0, sealOperation = 0, sealStorageWarning = '';
   const privateSealStore = sealStore || createSealStore(win.indexedDB);
   const build = (options = selection) => ({ ...buildInvoicePreview(getState(), options, getInvoiceSettings()), seal, sealRevision });
@@ -185,7 +188,15 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
       }
     } catch {
       if (!disposed && token === sealOperation) { refresh(); showSealError('標準の社印を読み込めません。再読み込みするか、透過PNGを選んでください。PDFはまだ作成できません。'); }
-    } finally { if (!disposed && token === sealOperation) { sealLoading = false; setSealBusy(false); } }
+    } finally {
+      // A pagehide invalidates the old load. Its completion must not permanently
+      // reject startup; the restored page's load owns the readiness result.
+      if (!disposed && token === sealOperation) {
+        sealLoading = false; setSealBusy(false);
+        if(!seal||sealError||sealStorageWarning) rejectReady(Object.assign(new Error(sealError||sealStorageWarning||'社印の準備が完了しませんでした。'),{code:'startup-seal'}));
+        else resolveReady();
+      }
+    }
   }
   function invalidateSealPDF() { revision++; sealRevision++; retireGenerated(); }
   async function changeSealFile(file) {
@@ -348,9 +359,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   const pageShow = event => { if (event.persisted && !disposed) { refresh(); void loadSavedSeal(); } };
   win.addEventListener('pagehide', clearSealMemory); win.addEventListener('pageshow', pageShow);
   refresh();
-  const ready=loadSavedSeal().then(()=>{if(disposed||!seal||sealError||sealStorageWarning)throw new Error(sealError||sealStorageWarning||'社印の準備が完了しませんでした。');});
-  // Standalone callers retain the visible error; startup callers await readiness.
-  void ready.catch(()=>{});
-  return { ready, refresh, destroy() { disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
+  void loadSavedSeal();
+  return { ready, refresh, destroy() { rejectReady(Object.assign(new Error('起動準備が終了しました。'),{code:'startup-seal'})); disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
 }
 

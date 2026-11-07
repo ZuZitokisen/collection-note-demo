@@ -10,3 +10,8 @@ test('invoice ready waits for default artwork and rejects failed or uncertain pr
  let resolve;const h=fixture({loadDefaultSeal:()=>new Promise(r=>{resolve=r;})});let ready=false;h.output.ready.then(()=>ready=true);await new Promise(r=>setTimeout(r,0));assert.equal(ready,false);resolve(seal);await h.output.ready;assert.equal(ready,true);h.output.destroy();h.dom.window.close();
  for(const options of [{loadDefaultSeal:async()=>{throw Error('fetch failed');}},{sealStore:{load:async()=>{throw Error('private store failed');}},loadDefaultSeal:async()=>seal}]){const f=fixture(options);await assert.rejects(f.output.ready);f.output.destroy();f.dom.window.close();}
 });
+test('pagehide during initial seal load waits for pageshow replacement rather than permanently failing',async()=>{
+ const loads=[];const h=fixture({loadDefaultSeal:()=>new Promise(resolve=>loads.push(resolve))});let ready=false;h.output.ready.then(()=>ready=true);await new Promise(r=>setTimeout(r,0));
+ h.dom.window.dispatchEvent(new h.dom.window.PageTransitionEvent('pagehide',{persisted:true}));loads[0](seal);await new Promise(r=>setTimeout(r,0));assert.equal(ready,false);
+ h.dom.window.dispatchEvent(new h.dom.window.PageTransitionEvent('pageshow',{persisted:true}));await new Promise(r=>setTimeout(r,0));assert.equal(loads.length,2);loads[1](seal);await h.output.ready;assert.equal(ready,true);h.output.destroy();h.dom.window.close();
+});

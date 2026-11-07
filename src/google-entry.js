@@ -17,17 +17,24 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         render('画面を準備しています…',false,false);
         prepare();
         await loadApp();
-        if(!stillCurrent()||!online())throw new Error('identity changed during preparation');
-        started=true;
+        if(!stillCurrent()||!online())throw Object.assign(new Error('identity changed during preparation'),{code:'startup-session-changed'});
         open();
+        started=true;
       }
-    } catch { close(); render(loading ? '本体の読み込みに失敗しました。ページを再読み込みしてください。' : '本人確認が完了しませんでした。接続を確認して再試行してください。'); }
+    } catch (error) {
+      const wasLoading=loading; loading=false; close();
+      const messages={
+        'startup-session-changed':'読み込み中にログイン状態または接続が変わりました。もう一度確認してください。',
+        'startup-seal':'社印の読み込みが完了しませんでした。ページを再読み込みしてください。（起動確認: SEAL）',
+        'startup-storage':'端末内データの確認が完了しませんでした。データを削除せず、ページを再読み込みしてください。（起動確認: STORAGE）',
+      };
+      render(messages[error?.code] || (wasLoading ? '本体の読み込みに失敗しました。ページを再読み込みしてください。（起動確認: APP）' : '本人確認が完了しませんでした。接続を確認して再試行してください。'));
+    }
     finally { checking=false; }
   }
   return {
     async start() {
       if(started || checking) return;
-      if(loading) { render('本体の読み込みに失敗しました。ページを再読み込みしてください。'); return; }
       const current=++attempt;
       unsubscribe?.(); session?.dispose(); session=null;
       if (!online()) { render('初回のGoogle本人確認にはインターネット接続が必要です。'); return; }
@@ -79,9 +86,10 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
     else if(!event.shiftKey&&(document.activeElement===last||!card.contains(document.activeElement))){event.preventDefault();first.focus();}
   });
   const heldDialogs=new Map();
+  const pendingDialogs=new Set();
   function holdDialogs(){
     for(const dialog of root.querySelectorAll('dialog')){
-      const saved={inert:dialog.inert,show:dialog.showModal,close:dialog.close,showOwn:Object.getOwnPropertyDescriptor(dialog,'showModal'),closeOwn:Object.getOwnPropertyDescriptor(dialog,'close'),requested:false};
+      const saved={inert:dialog.inert,show:dialog.showModal,close:dialog.close,showOwn:Object.getOwnPropertyDescriptor(dialog,'showModal'),closeOwn:Object.getOwnPropertyDescriptor(dialog,'close'),requested:pendingDialogs.has(dialog)};
       heldDialogs.set(dialog,saved);dialog.inert=true;
       dialog.showModal=()=>{saved.requested=true;};
       dialog.close=(...args)=>{saved.requested=false;if(dialog.open)saved.close?.apply(dialog,args);};
@@ -94,7 +102,8 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
       if(saved.closeOwn)Object.defineProperty(dialog,'close',saved.closeOwn);else delete dialog.close;
       if(!success&&dialog.open)saved.close?.call(dialog);
       dialog.inert=success?saved.inert:true;
-      if(success&&saved.requested)pending.push(()=>saved.show?.call(dialog));
+      if(!success&&saved.requested)pendingDialogs.add(dialog);
+      if(success&&saved.requested){pendingDialogs.delete(dialog);pending.push(()=>saved.show?.call(dialog));}
     }
     heldDialogs.clear();for(const show of pending)show();
   }

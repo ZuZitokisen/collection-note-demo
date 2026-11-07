@@ -55,3 +55,19 @@ test('idle startup is only centered title and login; recovery appears only on fa
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');assert.match(css,/\.google-entry-card\{[^}]*text-align:center/);assert.match(css,/\.google-entry-action\{[^}]*align-items:center/);h.dom.window.close();
  const fail=harness({online:()=>false});await tick();assert.equal(fail.ui.entry.querySelector('[role="status"]').hidden,false);assert.ok([...fail.ui.entry.querySelectorAll('button')].some(node=>!node.hidden&&node.textContent==='もう一度確認'));fail.dom.window.close();
 });
+test('load-stage transient failure permits another attempt and distinguishes safe error codes',async()=>{
+ let loads=0;const h=harness({signedIn:true,loadApp:async()=>{if(++loads===1)throw Object.assign(Error('private details must not display'),{code:'startup-session-changed'});}});
+ await tick();assert.match(h.ui.entry.textContent,/ログイン状態または接続/);assert.doesNotMatch(h.ui.entry.textContent,/private details/);
+ await h.ui.gate.start();await tick();assert.equal(loads,2);assert.equal(h.ui.gate.started,true);assert.equal(h.ui.entry.hidden,true);h.dom.window.close();
+});
+test('known startup seal and storage failures have distinct safe diagnoses',async()=>{
+ for(const [code,label] of [['startup-seal','SEAL'],['startup-storage','STORAGE']]){
+  const h=harness({signedIn:true,loadApp:async()=>{throw Object.assign(Error('private details'),{code});}});await tick();assert.ok(h.ui.entry.textContent.includes(label));assert.doesNotMatch(h.ui.entry.textContent,/private details/);assert.equal(h.ui.root.hidden,true);h.dom.window.close();
+ }
+});
+test('session retry preserves app dialog requested during first preparation',async()=>{
+ let calls=0,opened=0;const dom=new JSDOM('<section id="google-entry"></section><div id="google-app-root" hidden inert><dialog></dialog></div>',{url:'https://example.test/'});const dialog=dom.window.document.querySelector('dialog');dialog.showModal=function(){opened++;this.open=true;};dialog.close=function(){this.open=false;};
+ const session={state:{status:'signed-in',user:{uid:'synthetic'}},subscribe(fn){fn(this.state);return()=>{};},dispose(){},verifyIdentity:async()=>({uid:'synthetic'}),signIn:async()=>{}};
+ const ui=installEntrySurface({doc:dom.window.document,initialize:async()=>session,online:()=>true,loadApp:async()=>{if(++calls===1){dialog.showModal();throw Object.assign(Error('changed'),{code:'startup-session-changed'});}}});
+ await tick();assert.equal(opened,0);await ui.gate.start();await tick();assert.equal(opened,1);assert.equal(ui.gate.started,true);dom.window.close();
+});
