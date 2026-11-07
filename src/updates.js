@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.23';
-export const RELEASE_CHANGES = ["Googleログイン後に画面へ進まない場合の認証状態処理を修正しました", "元の画面構成と保存済みデータは変更しません", "iOS実機での解消確認は未完了です"];
+export const APP_VERSION = '0.5.24';
+export const RELEASE_CHANGES = ["ログイン後の社印準備・画面復帰時の起動処理を修正しました", "起動失敗時に確認箇所を表示します。元の画面構成と保存済みデータは変更しません", "iOS実機での解消確認は未完了です"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   const checkButton=doc.querySelector('#check-update'),applyButton=doc.querySelector('#apply-update'),status=doc.querySelector('#update-status'),notice=doc.querySelector('#update-notice');
