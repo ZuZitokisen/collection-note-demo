@@ -1,20 +1,23 @@
 // This UI gate is not server authorization. Every real-data API needs its own checks.
 export function createEntryGate({initialize, loadApp, online, show, open, prepare=()=>{}, close=()=>{}}) {
-  let session, unsubscribe, attempt=0, checking=false, started=false, loading=false;
+  let session, unsubscribe, attempt=0, identityEpoch=0, observedUid=null, checking=false, started=false, loading=false;
   const render = (message, canLogin=false, canRetry=true) => { if (!started) show({message,canLogin,canRetry}); };
   async function verify() {
     if (started || checking || !session?.state.user) return;
     if (!online()) { render('オンラインにして、もう一度確認してください。'); return; }
+    const currentSession=session,currentAttempt=attempt,currentEpoch=identityEpoch,expectedUid=session.state.user.uid;
+    const stillCurrent=()=>session===currentSession&&attempt===currentAttempt&&identityEpoch===currentEpoch&&session.state.status==='signed-in'&&session.state.user?.uid===expectedUid;
     checking=true;
     render('Googleアカウントを確認しています…',false,false);
     try {
-      const identity=await session.verifyIdentity();
-      if (!identity || !online()) throw new Error('identity unavailable');
+      const identity=await currentSession.verifyIdentity();
+      if (!identity || identity.uid!==expectedUid || !stillCurrent() || !online()) throw new Error('identity unavailable');
       if (!loading) {
         loading=true;
         render('画面を準備しています…',false,false);
         prepare();
         await loadApp();
+        if(!stillCurrent()||!online())throw new Error('identity changed during preparation');
         started=true;
         open();
       }
@@ -34,6 +37,8 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         if(current!==attempt) {next.dispose();return;}
         session=next;
         unsubscribe=session.subscribe(state=>{
+          const uid=state.status==='signed-in'?state.user?.uid??null:null;
+          if(uid!==observedUid){observedUid=uid;identityEpoch++;}
           if(started) return;
           if(state.status==='signed-in') {void verify();return;}
           const busy=['loading','signing-in','signing-out'].includes(state.status);
@@ -53,19 +58,15 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
   if (!entry || !root) throw new Error('Google entry elements missing');
   const node=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element;};
   const heading=node('h1','RouteNote');
-  const subtitle=node('h2','Googleログイン');
   const activity=node('span','');activity.className='google-entry-activity';activity.setAttribute('aria-hidden','true');
   const status=node('p','Googleログインを準備しています…');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   const login=node('button','Googleでログイン');login.type='button';login.className='button primary';login.disabled=true;
   const retry=node('button','もう一度確認');retry.type='button';retry.className='button secondary';retry.hidden=true;
   const reload=node('button','ページを再読み込み');reload.type='button';reload.className='button secondary';reload.addEventListener('click',()=>location.reload());
-  const notice=node('p','Google本人確認後にアプリへ進みます。シートの表示・訂正では、サーバー側で登録メンバーを別途確認します。「このブラウザ」の試作報告・設定は共有しません。この入口だけで実データへのアクセスを許可するものではありません。');
-  const scope=node('p','Googleから名前・プロフィール写真・メールアドレスを取得します。Driveやスプレッドシートの権限は要求しません。');
-  const recovery=node('a','更新・復旧画面を開く');recovery.href='./update.html';
   const card=node('div','');card.className='google-entry-card';
   heading.id='google-entry-title';entry.setAttribute('role','dialog');entry.setAttribute('aria-modal','true');entry.setAttribute('aria-labelledby',heading.id);
   const actionSlot=node('div','');actionSlot.className='google-entry-action';actionSlot.append(login,activity,status);
-  card.append(heading,subtitle,actionSlot,retry,notice,scope,reload,node('p',''),recovery);entry.replaceChildren(card);
+  card.append(heading,actionSlot,retry,reload);entry.replaceChildren(card);
   root.hidden=true;root.inert=true;
   entry.addEventListener('keydown',event=>{
     if(entry.hidden)return;
@@ -99,7 +100,7 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
   }
   const gate=createEntryGate({
     initialize, loadApp, online,
-    show:({message,canLogin,canRetry})=>{entry.hidden=false;const busy=!canLogin&&!canRetry;activity.hidden=!busy;login.hidden=busy;entry.setAttribute('aria-busy',String(busy));status.textContent=message;login.disabled=!canLogin;retry.hidden=!canRetry;if(!entry.contains(document.activeElement))(canLogin?login:canRetry?retry:reload).focus();},
+    show:({message,canLogin,canRetry})=>{entry.hidden=false;const busy=!canLogin&&!canRetry;const idle=canLogin&&message==='Googleアカウントでログインしてください。';activity.hidden=!busy;login.hidden=!canLogin;entry.setAttribute('aria-busy',String(busy));status.textContent=message;status.hidden=idle;login.disabled=!canLogin;retry.hidden=!canRetry||idle;reload.hidden=!canRetry||idle;if(!entry.contains(document.activeElement)){if(canLogin)login.focus();else if(canRetry)retry.focus();else{entry.tabIndex=-1;entry.focus();}}},
     prepare:()=>{root.hidden=false;root.inert=true;holdDialogs();},
     close:()=>{releaseDialogs(false);root.hidden=true;root.inert=true;entry.hidden=false;},
     open:()=>{entry.hidden=true;entry.setAttribute('aria-busy','false');activity.hidden=true;root.inert=false;releaseDialogs(true);},
