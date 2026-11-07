@@ -347,7 +347,10 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   const clearSealMemory = () => { sealOperation++; seal = null; sealIsDefault = false; sealError = ''; sealPersisted = false; sealRevision++; sealBusy = true; sealLoading = true; retireGenerated(); host.querySelectorAll('[data-invoice-seal]').forEach(element => element.remove()); const input = host.querySelector('#invoice-seal-file'); if (input) input.value = ''; setSealBusy(true); };
   const pageShow = event => { if (event.persisted && !disposed) { refresh(); void loadSavedSeal(); } };
   win.addEventListener('pagehide', clearSealMemory); win.addEventListener('pageshow', pageShow);
-  refresh(); void loadSavedSeal();
-  return { refresh, destroy() { disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
+  refresh();
+  const ready=loadSavedSeal().then(()=>{if(disposed||!seal||sealError||sealStorageWarning)throw new Error(sealError||sealStorageWarning||'社印の準備が完了しませんでした。');});
+  // Standalone callers retain the visible error; startup callers await readiness.
+  void ready.catch(()=>{});
+  return { ready, refresh, destroy() { disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
 }
 
