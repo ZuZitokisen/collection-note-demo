@@ -7,7 +7,7 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
     if (!online()) { render('オンラインにして、もう一度確認してください。'); return; }
     const currentSession=session,currentAttempt=attempt,currentEpoch=identityEpoch,expectedUid=session.state.user.uid;
     const stillCurrent=()=>session===currentSession&&attempt===currentAttempt&&identityEpoch===currentEpoch&&session.state.status==='signed-in'&&session.state.user?.uid===expectedUid;
-    checking=true;
+    checking=true;let preparedApp;
     render('Googleアカウントを確認しています…',false,false);
     try {
       const identity=await currentSession.verifyIdentity();
@@ -16,14 +16,15 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         loading=true;
         render('画面を準備しています…',false,false);
         prepare();
-        await loadApp();
+        preparedApp=await loadApp();
         if(!stillCurrent()||!online())throw Object.assign(new Error('identity changed during preparation'),{code:'startup-session-changed'});
-        open();
+        open(preparedApp);
         started=true;
       }
     } catch (error) {
-      const wasLoading=loading; loading=false; close();
+      const wasLoading=loading; preparedApp?.dispose?.();loading=false; close();
       const messages={
+        WORKSPACE_NOT_ENABLED:'接続を準備中です。少し待って再試行してください。',
         'startup-session-changed':'読み込み中にログイン状態または接続が変わりました。もう一度確認してください。',
         'startup-seal':'社印の読み込みが完了しませんでした。ページを再読み込みしてください。（起動確認: SEAL）',
         'startup-storage':'端末内データの確認が完了しませんでした。データを削除せず、ページを再読み込みしてください。（起動確認: STORAGE）',
@@ -58,7 +59,7 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
   };
 }
 
-export function installEntrySurface({doc=document, initialize=async()=> (await import('./firebase-driver.js')).initializeGoogleSession(), loadApp=async()=>{const app=await import('./app.js');await app.appReady;}, online=()=>navigator.onLine}={}) {
+export function installEntrySurface({doc=document, initialize=async()=> (await import('./firebase-driver.js')).initializeGoogleSession(), loadApp=async()=> (await import('./app-entry.js')).loadApp(), online=()=>navigator.onLine}={}) {
   const document=doc;
   const entry=document.getElementById('google-entry');
   const root=document.getElementById('google-app-root');
@@ -110,12 +111,15 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
   const gate=createEntryGate({
     initialize, loadApp, online,
     show:({message,canLogin,canRetry})=>{entry.hidden=false;const busy=!canLogin&&!canRetry;const idle=canLogin&&message==='Googleアカウントでログインしてください。';activity.hidden=!busy;login.hidden=!canLogin;entry.setAttribute('aria-busy',String(busy));status.textContent=message;status.hidden=idle;login.disabled=!canLogin;retry.hidden=!canRetry||idle;reload.hidden=!canRetry||idle;if(!entry.contains(document.activeElement)){if(canLogin)login.focus();else if(canRetry)retry.focus();else{entry.tabIndex=-1;entry.focus();}}},
-    prepare:()=>{root.hidden=false;root.inert=true;holdDialogs();},
+    prepare:()=>{root.hidden=true;root.inert=true;holdDialogs();},
     close:()=>{releaseDialogs(false);root.hidden=true;root.inert=true;entry.hidden=false;},
-    open:()=>{entry.hidden=true;entry.setAttribute('aria-busy','false');activity.hidden=true;root.inert=false;releaseDialogs(true);},
+    open:app=>{app?.activate?.();root.hidden=false;entry.hidden=true;entry.setAttribute('aria-busy','false');activity.hidden=true;root.inert=false;releaseDialogs(true);},
   });
   login.addEventListener('click',()=>void gate.signIn());
-  retry.addEventListener('click',()=>void gate.start());
+  let recovery=null;
+  retry.addEventListener('click',()=>{if(recovery){retry.hidden=true;reload.hidden=true;activity.hidden=false;void Promise.resolve(recovery()).catch(()=>{activity.hidden=true;retry.hidden=false;reload.hidden=false;});}else void gate.start();});
+  doc.addEventListener('routenote-connection-error',event=>{recovery=event.detail?.retry;root.hidden=true;root.inert=true;entry.hidden=false;activity.hidden=true;login.hidden=true;status.hidden=false;status.textContent=event.detail?.message||'接続を確認してください。';retry.hidden=false;reload.hidden=false;entry.setAttribute('aria-busy','false');});
+  doc.addEventListener('routenote-connection-restored',()=>{recovery=null;entry.hidden=true;activity.hidden=true;});
   void gate.start();
   return {gate,entry,root};
 }
