@@ -146,34 +146,7 @@ export function buildInvoiceDocument(view) {
       ...lines.slice(i, i + 38).map((value, row) => text(`note-${i + row}`, value, 15, 43 + row * 5, { size: 3.1, maxWidth: 152, forceFit: true }))];
     pages.push({ kind: 'notes', cells, rules: [] });
   }
-  if (view.liveBilling) {
-    const set = (page, key, value) => { const cell = page.cells.find(item => item.key === key); if (cell) cell.text = safeText(value); };
-    for (const page of pages) {
-      if (page.kind === 'invoice') {
-        set(page, 'title', '請求書（確認用・未確定）');
-        set(page, 'issue-date', `対象月：${view.month}`);
-        set(page, 'total-top', num(view.liveBilling.monthlySubtotal));
-        set(page, 'total-bottom', `${num(view.liveBilling.monthlySubtotal)} 円`);
-        set(page, 'subtotal-label', '月次小計（基本料を含む）');
-        set(page, 'subtotal', `${num(view.liveBilling.monthlySubtotal)} 円`);
-        set(page, 'tax-title', '税の取扱いは要確認');
-        set(page, 'draft-note', '確認用・未確定：発行者・振込先は今回の手入力です。正式な請求書としての検証は未完了。');
-        set(page, 'issuer', '');
-        page.cells.push(text('live-phone', `TEL：${view.issuer.phone || '未入力'}`, 96, 95, {size:2.6,maxWidth:65,forceFit:true}));
-        page.cells.push(text('live-invoice-number', `請求番号：${view.liveBilling.invoiceNumber || '未入力'}`, 157, 37, {size:2.6,maxWidth:65,align:'right',forceFit:true}));
-        page.cells=page.cells.filter(cell=>!cell.key.startsWith('bank-'));
-        const bankLines = view.liveBilling.bankInstructions ? view.liveBilling.bankInstructions.split('\n') : ['振込先：未入力'];
-        bankLines.slice(0,3).forEach((value,i)=>page.cells.push(text(`live-bank-${i}`, value, INVOICE_GEOMETRY.left, 234+i*5, {size:2.8,maxWidth:124,forceFit:true})));
-        const values = ['基本料金', num(view.liveBilling.baseFee), '1', '式', num(view.liveBilling.baseFee)];
-        values.forEach((value, col) => { const start = INVOICE_GEOMETRY.left + sum(INVOICE_GEOMETRY.columns.slice(0, col)), width = INVOICE_GEOMETRY.columns[col]; page.cells.push(text(`live-base-${col}`, value, col === 0 || col === 3 ? start : start + width - 1, 145, { maxWidth: width - 2, align: col === 0 || col === 3 ? 'left' : 'right', bold: col === 0 })); });
-      } else if (page.kind === 'monthly-detail') {
-        set(page, 'detail-total-1-0', '回収料金');
-        set(page, 'detail-unit-note', `基本料：${num(view.liveBilling.baseFee)} 円 ／ 月次小計：${num(view.liveBilling.monthlySubtotal)} 円`);
-        set(page, 'detail-amount-note', `提出用合計：${num(view.liveBilling.submissionTotal)} 円。現行シート単価・未確定（税設定 ${view.liveBilling.taxFraction ?? '不明'}：要確認）。`);
-      }
-    }
-  }
-  return { pages, notes, geometry: INVOICE_GEOMETRY, customerName: view.customer.name, month: view.label, liveBilling: Boolean(view.liveBilling) };
+  return { pages, notes, geometry: INVOICE_GEOMETRY, customerName: view.customer.name, month: view.label };
 }
 function textSVG(item) {
   const { text: value, x, y, size = 3.2, bold, align = 'left', key = '', maxWidth, forceFit = false } = item;
@@ -185,12 +158,12 @@ export function invoicePageSVG(document, index) {
   const page = document.pages[index];
   if (!page) throw new Error('出力ページがありません。');
   const g = INVOICE_GEOMETRY;
-  const mark = textSVG(text('', document.liveBilling ? '実シート・確認用（未確定） / 正式な請求には使用できません' : 'SAMPLE ・ 架空データ / 請求には使用できません', 15, 9, { size: 2.2 }));
+  const mark = textSVG(text('', 'SAMPLE ・ 架空データ / 請求には使用できません', 15, 9, { size: 2.2 }));
   const rules = page.rules.map(rule => `<line x1="${rule.x1}" y1="${rule.y1}" x2="${rule.x2}" y2="${rule.y2}" stroke="#000" stroke-width="${rule.width}"/>`).join('');
   const seal = page.kind === 'invoice' ? validateCanonicalSeal(page.seal ?? null) : null;
   const box = INVOICE_SEAL_BOX;
   const sealSVG = seal ? `<image data-invoice-seal="true" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMid meet" href="${seal.dataURL}"/>` : '';
-  const label = document.liveBilling ? '実シートの確認用プレビュー（未確定）' : page.kind === 'invoice' ? '請求書の架空プレビュー' : page.kind === 'monthly-detail' ? '月間回収明細の架空プレビュー' : '備考別紙';
+  const label = page.kind === 'invoice' ? '請求書の架空プレビュー' : page.kind === 'monthly-detail' ? '月間回収明細の架空プレビュー' : '備考別紙';
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${g.pageWidth} ${g.pageHeight}" width="${g.pixelWidth}" height="${g.pixelHeight}" role="img" aria-label="${label} ${index + 1} / ${document.pages.length}"><rect width="${g.pageWidth}" height="${g.pageHeight}" fill="white" data-invoice-layer="paper"/>${sealSVG}<g data-invoice-layer="content" fill="#000" font-family="${esc(FONT)}">${mark}${rules}${page.cells.map(textSVG).join('')}${document.pages.length > 1 ? textSVG(text('', `${index + 1} / ${document.pages.length}`, 171, 252, { size: 2.1, align: 'right' })) : ''}</g></svg>`;
 }
 
