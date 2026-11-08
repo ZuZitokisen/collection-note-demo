@@ -93,8 +93,8 @@ export function createInvoiceSettingsStore({ getStorage = () => globalThis.local
   return { read, getSettings: () => read().settings, saveIssuer: (values, raw) => saveSection('issuer', values, raw), saveBankAccounts: (values, raw) => saveSection('bank', values, raw), saveTax: (values, raw) => saveSection('tax', values, raw) };
 }
 
-export function installInvoiceSettings({ doc = document, onChange = () => {}, getStorage = () => doc.defaultView.localStorage, storageKey = INVOICE_SETTINGS_KEY } = {}) {
-  const win = doc.defaultView, store = createInvoiceSettingsStore({ getStorage, storageKey });
+export function installInvoiceSettings({ doc = document, onChange = () => {}, getStorage = () => doc.defaultView.localStorage, storageKey = INVOICE_SETTINGS_KEY, store: injectedStore, onSaveError=()=>{} } = {}) {
+  const win = doc.defaultView, store = injectedStore??createInvoiceSettingsStore({ getStorage, storageKey });
   const dialog = doc.createElement('dialog');
   dialog.id = 'invoice-settings-dialog'; dialog.className = 'invoice-settings-dialog';
   dialog.setAttribute('aria-labelledby', 'invoice-settings-title');
@@ -142,7 +142,7 @@ export function installInvoiceSettings({ doc = document, onChange = () => {}, ge
     const editing = mode === 'edit', kind = context.kind, title = titles[kind];
     const content = kind === 'bank' ? context.settings.bankAccounts.map((account, index) => `<section class="invoice-bank-group"><h3>振込先${index + 1}</h3>${fieldsHTML(BANK_FIELDS, account, editing, `bank${index}:`)}</section>`).join('') : fieldsHTML(kind === 'tax' ? TAX_FIELDS : ISSUER_FIELDS, kind === 'tax' ? context.settings.tax : context.settings.issuer, editing);
     const description = kind === 'bank' ? '請求書に表示する振込先（任意）' : kind === 'tax' ? '今後の計算に使う候補の設定' : '請求書に表示する会社名・住所';
-    dialog.innerHTML = `<form id="invoice-settings-form" novalidate><header class="dialog-head"><div><h2 id="invoice-settings-title">${title}${editing ? 'を編集' : ''}</h2><p>${description}</p></div><button type="button" class="icon-button" data-invoice-close aria-label="${title}を閉じる">×</button></header><div class="dialog-body"><p id="invoice-settings-note" class="invoice-settings-note">このブラウザ内だけに保存します。Google Sheetsへの接続・送信はありません。試作のため、実在の会社・個人・銀行口座の情報は入力しないでください。</p>${content}<p class="invoice-settings-note">${kind === 'tax' ? '税率・税込／税抜・端数処理は未設定から始めます。保存しても税計算はまだ行わず、正式な請求額も計算しません。過去の報告・保存済みPDFを変更しません。' : '空欄は未設定として表示します。設定は次に作る見本へ反映し、過去の報告・保存済みPDFは変更しません。正式な請求には使用できません。'}</p><p id="invoice-settings-status" role="status">${esc(message)}</p><p id="invoice-settings-error" class="form-error" role="alert" ${context.error ? '' : 'hidden'}>${esc(context.error)}</p><div id="invoice-settings-discard" class="invoice-settings-discard" role="group" aria-label="未保存の入力を破棄する確認" hidden><p>入力中の内容は保存されていません。破棄しますか？</p><div class="actions"><button type="button" class="button secondary" data-invoice-keep>入力に戻る</button><button type="button" class="button secondary danger-text" data-invoice-discard>破棄して閉じる</button></div></div></div><footer class="dialog-foot">${editing ? '<button type="button" class="button secondary" data-invoice-cancel-edit>キャンセル</button><button type="button" id="invoice-settings-save" class="button primary">保存</button>' : `<button type="button" class="button secondary" data-invoice-close>閉じる</button><button type="button" class="button primary" data-invoice-edit ${context.error ? 'disabled' : ''}>編集</button>`}</footer></form>`;
+    dialog.innerHTML = `<form id="invoice-settings-form" novalidate><header class="dialog-head"><div><h2 id="invoice-settings-title">${title}${editing ? 'を編集' : ''}</h2><p>${description}</p></div><button type="button" class="icon-button" data-invoice-close aria-label="${title}を閉じる">×</button></header><div class="dialog-body"><p id="invoice-settings-note" class="invoice-settings-note">${injectedStore?'登録メンバーで共有する設定です。'+(context.provenance?.[kind]?.origin==='reference-document'&&context.provenance[kind].reviewStatus==='unreviewed'?'資料から仮入力・要確認。':''):'このブラウザ内だけに保存します。Google Sheetsへの接続・送信はありません。試作のため、実在の会社・個人・銀行口座の情報は入力しないでください。'}</p>${content}<p class="invoice-settings-note">${kind === 'tax' ? '税率・税込／税抜・端数処理は未設定から始めます。保存しても税計算はまだ行わず、正式な請求額も計算しません。過去の報告・保存済みPDFを変更しません。' : '空欄は未設定として表示します。設定は次に作る見本へ反映し、過去の報告・保存済みPDFは変更しません。正式な請求には使用できません。'}</p><p id="invoice-settings-status" role="status">${esc(message)}</p><p id="invoice-settings-error" class="form-error" role="alert" ${context.error ? '' : 'hidden'}>${esc(context.error)}</p><div id="invoice-settings-discard" class="invoice-settings-discard" role="group" aria-label="未保存の入力を破棄する確認" hidden><p>入力中の内容は保存されていません。破棄しますか？</p><div class="actions"><button type="button" class="button secondary" data-invoice-keep>入力に戻る</button><button type="button" class="button secondary danger-text" data-invoice-discard>破棄して閉じる</button></div></div></div><footer class="dialog-foot">${editing ? '<button type="button" class="button secondary" data-invoice-cancel-edit>キャンセル</button><button type="button" id="invoice-settings-save" class="button primary">保存</button>' : `<button type="button" class="button secondary" data-invoice-close>閉じる</button><button type="button" class="button primary" data-invoice-edit ${context.error ? 'disabled' : ''}>編集</button>`}</footer></form>`;
     baseline = editing ? JSON.stringify(formValues()) : '';
   }
   function open(kind = 'issuer') {
@@ -172,15 +172,15 @@ export function installInvoiceSettings({ doc = document, onChange = () => {}, ge
         if (disposed) throw new InvoiceSettingsError('画面が閉じられたため保存していません。', 'disposed');
         return (kind === 'bank' ? store.saveBankAccounts : kind === 'tax' ? store.saveTax : store.saveIssuer)(draft, expectedRaw);
       };
-      const saved = win.navigator.locks?.request ? await win.navigator.locks.request(storageKey, save) : save();
+      const saved = win.navigator.locks?.request ? await win.navigator.locks.request(storageKey, save) : await save();
       if (disposed) return;
       context = { ...saved, kind, mode: 'view', error: '' };
-      setBusy(false); render('view', 'このブラウザに保存しました。');
+      setBusy(false); render('view', injectedStore?'共有設定を保存しました。':'このブラウザに保存しました。');
       dialog.querySelector('[data-invoice-edit]').focus();
       // A rendering callback failure must never be described as a failed write.
       doc.dispatchEvent(new win.CustomEvent('invoice-settings-change', { detail: { storageKey } }));
       try { onChange(copy(saved.settings)); } catch { /* Storage was already saved. */ }
-    } catch (error) { if (!disposed) setError(error.message || '保存できませんでした。入力内容は残しています。'); }
+    } catch (error) { if (!disposed){setError(error.message || '保存できませんでした。入力内容は残しています。');onSaveError(dialog.querySelector('#invoice-settings-error'));} }
     finally { if (!disposed) setBusy(false); }
   }
   const click = event => {

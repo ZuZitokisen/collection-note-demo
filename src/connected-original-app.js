@@ -1,0 +1,21 @@
+import {startOriginalApp} from './original-app.js';
+import {createOriginalDataAdapter} from './original-data-adapter.js';
+import {createAccountSealStore} from './account-seal-store.js';
+// Candidate entry may be configured, but publication requires verified backend readiness.
+export async function startConnectedOriginalApp({doc,identity,client,pendingJournal,services={},startApp=startOriginalApp}={}){
+ const root=doc.getElementById('google-app-root');if(!root)throw Error('本体の画面を確認できません。');const original=root.innerHTML;
+ root.hidden=true;root.inert=true;let app,adapter,sealStore;
+ try{
+  adapter=createOriginalDataAdapter({identity,readSnapshot:()=>client.read(),sendCommand:command=>client.change(command),queryOperation:id=>client.operation(id),pendingJournal});
+  sealStore=services.invoiceSealStore??createAccountSealStore({identity,indexedDB:doc.defaultView.indexedDB});
+  app=await startApp({doc,adapter,services:{...services,invoiceSealStore:sealStore,checkWorkspaceChanges:value=>client.check(value)}});
+  adapter.read();if(doc.visibilityState==='hidden')throw Error('画面に戻って再試行してください。');
+  let disposed=false;return{...app,assertCurrent:()=>adapter.read(),dispose(){if(disposed)return;disposed=true;app.dispose?.();sealStore.dispose?.();adapter.dispose();}};
+ }catch(error){app?.dispose?.();sealStore?.dispose?.();adapter?.dispose();root.innerHTML=original;root.hidden=true;root.inert=true;throw error;}
+}
+export function createConnectedAppLoader(options){let pending=null,app=null,original=null;return async()=>{
+ const root=options.doc.getElementById('google-app-root');original??=root.innerHTML;
+ if(app){try{app.assertCurrent();return app;}catch{app.dispose();app=null;root.innerHTML=original;root.hidden=true;root.inert=true;}}
+ if(pending)return pending;
+ pending=startConnectedOriginalApp(options).then(value=>(app=value)).finally(()=>{pending=null;});return pending;
+};}

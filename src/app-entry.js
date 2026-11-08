@@ -1,6 +1,9 @@
-// Old browser records are read only when the user explicitly opens the local demo.
-export const isLocalMode = search => new URLSearchParams(search).get('mode') === 'local';
-if(typeof document!=='undefined') {
- if(isLocalMode(location.search)) await import('./app.js');
- else {const {startLiveWorkspace}=await import('./live-workspace.js');await startLiveWorkspace();}
+import {createConnectionEntry} from './connection-entry.js';
+import {WORKSPACE_CONFIG} from './workspace-config.js';
+// Browser-only legacy records are read only in explicit local mode. No automatic migration.
+export const isLocalMode=search=>new URLSearchParams(search).get('mode')==='local';
+export function createApplicationEntry({doc=globalThis.document,config=WORKSPACE_CONFIG,...options}={}){
+ return createConnectionEntry({...options,doc,enabled:config.enabled&&!isLocalMode(doc.defaultView.location.search),endpoint:config.endpoint});
 }
+let loader;
+export function loadApp(){loader??=createApplicationEntry();return loader();}

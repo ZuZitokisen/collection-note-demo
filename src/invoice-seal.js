@@ -142,8 +142,9 @@ export async function loadDefaultInvoiceSeal(doc = globalThis.document, fetcher 
 }
 // Calling this factory is inert. Persistence occurs only through explicit
 // load/save/remove calls; callers opt in, and may otherwise keep bytes in memory.
-export function createSealStore(indexedDB) {
+export function createSealStore(indexedDB,{key='current',guard=()=>{}}={}) {
   async function run(mode, action) {
+    guard();
     if (!indexedDB?.open) throw storageError();
     return new Promise((resolve,reject) => {
       let db, transaction, settled = false;
@@ -163,7 +164,7 @@ export function createSealStore(indexedDB) {
         db = request.result;
         if (settled) { db.close(); return; }
         try {
-          transaction = db.transaction(STORE,mode);
+          guard();transaction = db.transaction(STORE,mode);
           const operation = action(transaction.objectStore(STORE)); let result;
           operation.onsuccess = () => { result = operation.result; };
           operation.onerror = () => finish(storageError());
@@ -174,8 +175,8 @@ export function createSealStore(indexedDB) {
     });
   }
   return {
-    async load() { const value = await run('readonly',store => store.get('current')); return value === undefined ? null : validateCanonicalSeal(value); },
-    async save(value) { const clean = validateCanonicalSeal(value); if (!clean) throw invalid(); await run('readwrite',store => store.put(clean,'current')); return clean; },
-    async remove() { await run('readwrite',store => store.delete('current')); }
+    async load() { const value = await run('readonly',store => store.get(key)); return value === undefined ? null : validateCanonicalSeal(value); },
+    async save(value) { const clean = validateCanonicalSeal(value); if (!clean) throw invalid(); await run('readwrite',store => store.put(clean,key)); return clean; },
+    async remove() { await run('readwrite',store => store.delete(key)); }
   };
 }
