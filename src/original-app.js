@@ -1,3 +1,4 @@
+import {markStartupFailure} from './workspace-client.js';
 import {appendWorkspaceRecovery} from './workspace-recovery-ui.js';
 import {createBrowseRecordSync} from './browse-record-sync.js';
 import {createModalSuspension} from './modal-suspension.js';
@@ -417,10 +418,10 @@ renderSettings();
 invoiceOutput=(services.installInvoiceOutput??installInvoiceOutput)({doc:document,getState:()=>adapter?.referenceView?.().state??state,getInvoiceSettings:()=>invoiceSettings.getSettings(),storageKey:ISSUER_STORAGE_KEY,...(services.invoiceSealStore?{sealStore:services.invoiceSealStore}:{}),...(adapter?{validateOutput:async expected=>{await adapter.refresh();state=adapter.read();adapter.assertBillingReady();const key=adapter.snapshotKey();if(expected!==undefined&&key!==expected)throw Error('作成中に記録や設定が変更されました。作り直してください。');return key;}}:{})});
 
 ensureDemoSession();
-await invoiceOutput.ready;
+try{await invoiceOutput.ready;}catch(error){throw markStartupFailure(error,'OUTPUT');}
 if(storageFailed)throw Object.assign(new Error('保存済みデータの確認が完了しませんでした。'),{code:'startup-storage'});
 resolve();
-}catch(error){reject(error);}});});
+}catch(error){reject(markStartupFailure(error,'UI'));}});});
 
 await appReady;
 function activate(){if(disposed||activated)return;activated=true;browseSync?.setContext({browse:currentPage==='browse',visible:document.visibilityState!=='hidden',authorized:true},{alreadyFresh:true});assistDispose=(services.installInputAssist??installInputAssist)({doc:document,win:window});updatesControl=(services.startUpdates??startUpdates)({doc:document,win:window,guard:discard,canReload:()=>!suspendedDraft&&!reportDirty&&!modalDirty&&!priceDirty&&!reorderDirty()&&!masterReorder?.dragging&&!pending&&!invoiceSettings?.isDirty()&&!invoiceSettings?.isBusy()});}

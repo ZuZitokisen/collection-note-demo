@@ -1,3 +1,4 @@
+import {markStartupFailure} from './workspace-client.js';
 import {startOriginalApp} from './original-app.js';
 import {createOriginalDataAdapter} from './original-data-adapter.js';
 import {createAccountSealStore} from './account-seal-store.js';
@@ -9,9 +10,9 @@ export async function startConnectedOriginalApp({doc,identity,client,pendingJour
   adapter=createOriginalDataAdapter({identity,readSnapshot:()=>client.read(),sendCommand:command=>client.change(command),queryOperation:id=>client.operation(id),pendingJournal});
   sealStore=services.invoiceSealStore??createAccountSealStore({identity,indexedDB:doc.defaultView.indexedDB});
   app=await startApp({doc,adapter,services:{...services,invoiceSealStore:sealStore,checkWorkspaceChanges:value=>client.check(value)}});
-  adapter.read();if(doc.visibilityState==='hidden')throw Error('画面に戻って再試行してください。');
+  try{adapter.read();if(doc.visibilityState==='hidden')throw Error('画面に戻って再試行してください。');}catch(error){throw markStartupFailure(error,'FINAL');}
   let disposed=false;return{...app,assertCurrent:()=>adapter.read(),dispose(){if(disposed)return;disposed=true;app.dispose?.();sealStore.dispose?.();adapter.dispose();}};
- }catch(error){app?.dispose?.();sealStore?.dispose?.();adapter?.dispose();root.innerHTML=original;root.hidden=true;root.inert=true;throw error;}
+ }catch(error){app?.dispose?.();sealStore?.dispose?.();adapter?.dispose();root.innerHTML=original;root.hidden=true;root.inert=true;throw markStartupFailure(error,'UI');}
 }
 export function createConnectedAppLoader(options){let pending=null,app=null,original=null;return async()=>{
  const root=options.doc.getElementById('google-app-root');original??=root.innerHTML;

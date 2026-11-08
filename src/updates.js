@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.26';
-export const RELEASE_CHANGES = ["読み込み・保存の応答待ち時間を最大120秒に調整（変更検知は30秒）", "認証変更時の中止・結果不明時の再送防止を維持"];
+export const APP_VERSION = '0.5.27';
+export const RELEASE_CHANGES = ["起動失敗時の確認コードを追加。業務データや秘密情報は表示しない", "画面構成・保存・認証・読み込み完了までの待機を維持"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   let disposed=false;const removers=[];const listen=(target,type,fn)=>{if(!target||disposed)return;target.addEventListener(type,fn);removers.push(()=>target.removeEventListener(type,fn));};
