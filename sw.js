@@ -1,5 +1,5 @@
-const VERSION = '0.5.25';
-const CACHE = 'work-report-shell-v40';
+const VERSION = '0.5.26';
+const CACHE = 'work-report-shell-v41';
 const PREFIX = 'work-report-shell-';
 const ROOT = new URL('./', self.location.href);
 const ASSETS = ['index.html', 'styles.css', 'ledger-panel.css', 'src/ledger-panel.js', 'src/sheet-connection.js', 'src/ledger-read-client.js', 'src/reports-client.js', 'src/reports-panel.js', 'src/reports-pending.js', 'invoice.css', 'master-reorder.css', 'src/master-reorder.js', 'src/app.js', 'src/original-app.js', 'src/original-data-adapter.js', 'src/legacy-reference.js', 'src/workspace-client.js', 'src/workspace-pending.js', 'src/workspace-recovery-ui.js', 'src/connected-original-app.js', 'src/connection-entry.js', 'src/app-entry.js', 'src/workspace-config.js', 'src/account-seal-store.js', 'src/modal-suspension.js', 'src/browse-record-sync.js', 'src/google-entry.js', 'src/firebase-driver.js', 'src/google-session.js', 'src/session.js', 'src/input-assist.js', 'src/invoice.js', 'src/invoice-document.js', 'src/invoice-settings.js', 'src/invoice-seal.js', 'src/model.js', 'src/domain.js', 'src/updates.js', 'manifest.webmanifest', 'icons/invoice-seal-lowres.png', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable.png', 'icons/apple-touch-icon.png'];
