@@ -20,3 +20,21 @@ export function createWorkspaceClient({identity,endpoint,fetchImpl=globalThis.fe
  }
  return{read:()=>request('workspace.read'),check:({cursor})=>request('workspace.check',{cursor}),change:change=>request('workspace.change',{change}),operation:operationId=>request('workspace.operation',{operationId})};
 }
+
+// Local startup diagnostics only. Preserve the original thrown value and never
+// display/log raw errors, messages, stacks, responses, identities, or tokens.
+const startupStages=new Set(['READ','VALIDATE','UI','OUTPUT','FINAL']);
+const startupErrors=new WeakMap();
+const startupCodes=new Set(['startup-session-changed','startup-seal','startup-storage','TIMEOUT','NETWORK','LOGIN_REQUIRED','UNAUTHENTICATED','FORBIDDEN','AUTH_UNAVAILABLE','SERVER_UNCONFIRMED','WORKSPACE_NOT_ENABLED','WORKSPACE_NOT_CONFIGURED','WORKSPACE_SOURCE_CHANGED','WORKSPACE_CONFLICT','WORKSPACE_MEMBERSHIP_SYNC_REQUIRED','INVALID_SNAPSHOT','STALE_READ','BILLING_NOT_READY','JOURNAL_UNAVAILABLE','OPERATION_UNKNOWN','BODY_TOO_LARGE','NOT_READY','BUSY','SOURCE_CONFLICT','SOURCE_CHANGED','PRIVATE_READ_UNAVAILABLE','PRIVATE_SCHEMA_CHANGED','PRIVATE_STORAGE_INVALID','PROJECTION_CONFLICT','PROJECTION_NOT_CONFIGURED','SHEETS_API_UNAVAILABLE']);
+export function markStartupFailure(error,stage){
+ if(error&&(typeof error==='object'||typeof error==='function')&&startupStages.has(stage)&&!startupErrors.has(error))startupErrors.set(error,stage);
+ return error;
+}
+export function safeStartupDiagnostic(error){
+ let stage='UNKNOWN',code='UNKNOWN';
+ if(error&&(typeof error==='object'||typeof error==='function')){
+  stage=startupErrors.get(error)??'UNKNOWN';
+  try{const candidate=error.code;if(typeof candidate==='string'&&startupCodes.has(candidate))code=candidate;}catch{}
+ }
+ return {stage,code};
+}

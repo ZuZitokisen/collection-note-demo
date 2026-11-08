@@ -1,3 +1,4 @@
+import {safeStartupDiagnostic} from './workspace-client.js';
 // This UI gate is not server authorization. Every real-data API needs its own checks.
 export function createEntryGate({initialize, loadApp, online, show, open, prepare=()=>{}, close=()=>{}}) {
   let session, unsubscribe, attempt=0, identityEpoch=0, observedUid=null, checking=false, started=false, loading=false;
@@ -29,7 +30,8 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         'startup-seal':'社印の読み込みが完了しませんでした。ページを再読み込みしてください。（起動確認: SEAL）',
         'startup-storage':'端末内データの確認が完了しませんでした。データを削除せず、ページを再読み込みしてください。（起動確認: STORAGE）',
       };
-      render(messages[error?.code] || (wasLoading ? '本体の読み込みに失敗しました。ページを再読み込みしてください。（起動確認: APP）' : '本人確認が完了しませんでした。接続を確認して再試行してください。'));
+      const diagnostic=safeStartupDiagnostic(error);
+      render(messages[diagnostic.code] || (wasLoading ? `本体の読み込みに失敗しました。ページを再読み込みしてください。（起動確認: APP / ${diagnostic.stage} / ${diagnostic.code}）` : '本人確認が完了しませんでした。接続を確認して再試行してください。'));
     }
     finally { checking=false; }
   }

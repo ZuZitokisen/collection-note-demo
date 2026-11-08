@@ -1,3 +1,4 @@
+import {markStartupFailure} from './workspace-client.js';
 // Authenticated workspace boundary. No demo migration, token storage or silent write retry.
 import {legacyReferenceView} from './legacy-reference.js';
 import {validateState} from './domain.js';
@@ -37,9 +38,9 @@ export function createOriginalDataAdapter({identity,readSnapshot,sendCommand,que
  function ticket(){const uid=identity.currentUid();if(disposed||!uid)throw issue('LOGIN_REQUIRED','Googleログインを確認してください。');return{uid,epoch};}
  function check(t){if(disposed||t.uid!==identity.currentUid()||t.epoch!==epoch)throw issue('LOGIN_REQUIRED','ログイン状態が変わりました。');}
  function current(){const t=ticket();if(!snapshot||owner!==t.uid)throw issue('NOT_READY','共有データを読み込んでいます。');return snapshot;}
- function accept(value,t){check(t);const next=validateWorkspaceSnapshot(value);if(snapshot&&owner===t.uid&&next.revision<snapshot.revision)throw issue('STALE_READ','古い読み込み結果は反映していません。');snapshot=next;owner=t.uid;return copy(snapshot);}
+ function accept(value,t){check(t);let next;try{next=validateWorkspaceSnapshot(value);}catch(error){throw markStartupFailure(error,'VALIDATE');}if(snapshot&&owner===t.uid&&next.revision<snapshot.revision)throw issue('STALE_READ','古い読み込み結果は反映していません。');snapshot=next;owner=t.uid;return copy(snapshot);}
  async function performRefresh(){const t=ticket(),before=snapshot,generation=mutationEpoch,readGeneration=readEpoch;if(busy)throw issue('BUSY','保存処理を確認しています。');if(pendingJournal){unconfirmed=!!(await pendingJournal.read(t.uid));check(t);}const value=await readSnapshot();check(t);if(busy||readGeneration!==readEpoch||generation!==mutationEpoch||before!==snapshot)throw issue('STALE_READ','読み込み中に内容が更新されました。再試行してください。');return accept(value,t);}
- async function refresh({fresh=false}={}){if(fresh&&refreshPending){try{await refreshPending;}catch{}}if(refreshPending)return refreshPending;refreshPending=performRefresh().catch(error=>{throw handleAuthFailure(error);}).finally(()=>{refreshPending=null;});return refreshPending;}
+ async function refresh({fresh=false}={}){if(fresh&&refreshPending){try{await refreshPending;}catch{}}if(refreshPending)return refreshPending;refreshPending=performRefresh().catch(error=>{throw handleAuthFailure(markStartupFailure(error,'READ'));}).finally(()=>{refreshPending=null;});return refreshPending;}
  async function prepareRefresh(){const t=ticket(),before=current(),generation=mutationEpoch,readGeneration=readEpoch;const value=validateWorkspaceSnapshot(await readSnapshot());check(t);let consumed=false;return{commitIfCurrent(predicate=()=>true){if(consumed)return false;consumed=true;check(t);if(busy||unconfirmed||readGeneration!==readEpoch||before!==snapshot||generation!==mutationEpoch||!predicate())return false;accept(value,t);return true;}};}
  async function execute(command){
   if(busy)throw issue('BUSY','保存処理を確認しています。');busy=true;mutationEpoch++;
