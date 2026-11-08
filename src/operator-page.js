@@ -1,8 +1,8 @@
 import {initializeGoogleSession,googleApiIdentity} from './firebase-driver.js';
-import {createWorkspaceOperatorClient} from './operator-client.js';
+import {createWorkspaceOperatorClient} from './operator-client.js?maintenance=finish-only-1';
 const ENDPOINT='https://script.google.com/macros/s/AKfycbxhTCY4IWpOh-tEQoS24yXXQYctbpHfB-l5iQObilc1-2Jud2-0bYJFhvpnOzAZ0dF-Wg/exec';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const READS=['bootstrapPreflight','pricingPreflight'],WRITES=['bootstrap','preparePricing','activate'];
+const READS=['bootstrapPreflight','pricingPreflight'],WRITES=['bootstrap','preparePricing','finishPricingRecovery','activate'];
 const BOOLEAN_FIELDS=['ok','readOnly','targetEmpty','sourceCurrent','changesApplied','initialized','replayed','activated','installed','rolledBack','sourceFreshRequired','mayMarkReady'];
 const HASH_FIELDS=['sourceFingerprint','configurationHash','documentHash','storedSourceFingerprint','resultHash','sourceContextHash','formulaHash'];
 export function validateOperatorResult(action,result,operationId){
@@ -13,6 +13,12 @@ export function validateOperatorResult(action,result,operationId){
  if(action==='pricingPreflight')valid=result.changesApplied===false&&hash(result.sourceContextHash)&&hash(result.formulaHash)&&integer(result.formulaCellCount)&&integer(result.projectionColumns);
  if(action==='bootstrap')valid=result.initialized===true&&result.activated===false&&result.operationId===operationId&&hash(result.resultHash)&&bool(result.replayed);
  if(action==='preparePricing')valid=result.installed===true&&result.rolledBack===false&&result.mayMarkReady===false&&bool(result.sourceFreshRequired)&&(result.replayed===undefined||bool(result.replayed));
+ // The fixed client action identifies the endpoint; accept only its bounded response contract.
+ if(action==='finishPricingRecovery'){
+  const keys=Object.keys(result).sort().join(',');
+  const base=['ok','installed','rolledBack','sourceFreshRequired','mayMarkReady'];
+  valid=(keys===base.sort().join(',')||keys===[...base,'replayed'].sort().join(',')&&result.replayed===true)&&result.installed===true&&result.rolledBack===false&&result.sourceFreshRequired===false&&result.mayMarkReady===false;
+ }
  if(action==='activate')valid=result.activated===true&&bool(result.replayed)&&integer(result.revision);
  if(!valid)throw Error('INVALID_RESPONSE');return result;
 }
@@ -31,7 +37,7 @@ export async function installOperatorPage({doc=document,initialize=initializeGoo
   if(!uid||busy||stopped||(!READS.includes(action)&&!WRITES.includes(action)))return;
   const write=WRITES.includes(action);if(write&&(!preflight||!UUID.test(operationId??'')||attempted.has(operationId))){status.textContent='操作を停止しました。事前確認と未使用の承認済み UUID を確認してください。';return;}
   const ticket=epoch,owner=uid;if(action==='bootstrapPreflight')preflight=false;busy=true;if(write)attempted.add(operationId);resultNode.textContent='';status.textContent=`workspace.${action} を確認しています。`;render();
-  try{const response=await client[action](operationId);if(epoch!==ticket||uid!==owner)throw Object.assign(Error('LOGIN_REQUIRED'),{code:'LOGIN_REQUIRED',unknown:write});const safe=safeOperatorResult(validateOperatorResult(action,response,operationId));resultNode.textContent=JSON.stringify(safe,null,2);if(action==='bootstrapPreflight')preflight=true;status.textContent=write?'応答を確認しました。結果の各項目を確認してから次へ進んでください。':'読み取り確認が完了しました。';form.elements.confirmed.checked=false;}
+  try{const response=await client[action](operationId);if(epoch!==ticket||uid!==owner)throw Object.assign(Error('LOGIN_REQUIRED'),{code:'LOGIN_REQUIRED',unknown:write});const safe=safeOperatorResult(validateOperatorResult(action,response,operationId));resultNode.textContent=JSON.stringify(safe,null,2);if(action==='bootstrapPreflight')preflight=true;status.textContent=action==='finishPricingRecovery'?'完了記録のみの確定応答を確認しました。数式変更・接続有効化は行っていません。サーバー側の記録を照合してください。':write?'応答を確認しました。結果の各項目を確認してから次へ進んでください。':'読み取り確認が完了しました。';form.elements.confirmed.checked=false;}
   catch(error){if(write&&!error.definitiveRejection){stopped=true;status.textContent='結果不明のため停止しました。再送・再読込せず、サーバー側の記録を確認してください。';}else{const code=typeof error.code==='string'&&/^[A-Z_]{1,64}$/.test(error.code)?error.code:'REQUEST_FAILED';status.textContent=`操作できませんでした (${code})。`;if(['FORBIDDEN','UNAUTHENTICATED','LOGIN_REQUIRED'].includes(code)){stopped=true;preflight=false;}}}
   finally{busy=false;render();}
  }
