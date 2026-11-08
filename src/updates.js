@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.25';
-export const RELEASE_CHANGES = ["元の画面を維持した共有データ接続の再構築候補（未公開・接続切替未実施）", "起動待機・認証・入力保持・保存競合を検証中"];
+export const APP_VERSION = '0.5.26';
+export const RELEASE_CHANGES = ["読み込み・保存の応答待ち時間を最大120秒に調整（変更検知は30秒）", "認証変更時の中止・結果不明時の再送防止を維持"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   let disposed=false;const removers=[];const listen=(target,type,fn)=>{if(!target||disposed)return;target.addEventListener(type,fn);removers.push(()=>target.removeEventListener(type,fn));};
