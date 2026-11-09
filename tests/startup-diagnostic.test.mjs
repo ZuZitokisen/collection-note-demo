@@ -19,7 +19,7 @@ test('actual adapter distinguishes transport failure from snapshot validation',a
   let caught;try{await adapter.initialize()}catch(e){caught=e;}assert.ok(caught);assert.equal(sent,1);assert.deepEqual(safeStartupDiagnostic(caught),invalid?{stage:'VALIDATE',code:'INVALID_SNAPSHOT'}:{stage:'READ',code:'SERVER_UNCONFIRMED'});if(!invalid)assert.equal(caught,original);adapter.dispose();
  }
 });
-test('actual UI, output-ready and final foreground boundaries retain original errors',async()=>{
+test('actual UI/output errors stay safe and hidden prepared app remains concealed for gate recovery',async()=>{
  const [{JSDOM},{readFileSync},D,{emptyInvoiceSettings},{startOriginalApp},{startConnectedOriginalApp}]=await Promise.all([import('jsdom'),import('node:fs'),import('../src/domain.js'),import('../src/invoice-settings.js'),import('../src/original-app.js'),import('../src/connected-original-app.js')]);
  const snapshot=()=>({ok:true,schemaVersion:1,state:D.createSampleState(),invoiceSettings:emptyInvoiceSettings(),actor:{memberId:'demo-member-1',displayName:'Synthetic',role:'admin'},capabilities:{recordsWrite:true,customersWrite:true,itemsWrite:true,membersWrite:true,invoiceSettingsWrite:true},revision:0,sourceFingerprint:'a'.repeat(64),watchCursor:'b'.repeat(64),billingStatus:{ready:true,reasons:[],scope:'reference-subtotal',formalTotalsVerified:false},projectionCurrent:true,reasons:[]});
  for(const stage of ['UI','OUTPUT']){
@@ -29,7 +29,7 @@ test('actual UI, output-ready and final foreground boundaries retain original er
   await assert.rejects(startOriginalApp({doc:dom.window.document,adapter,services}),e=>e===error);assert.deepEqual(safeStartupDiagnostic(error),{stage,code:'UNKNOWN'});adapter.dispose();dom.window.close();
  }
  const dom=new JSDOM('<main id="google-app-root">synthetic</main>',{url:'https://example.test'});Object.defineProperty(dom.window.document,'visibilityState',{value:'hidden',configurable:true});let requests=0;
- await assert.rejects(startConnectedOriginalApp({doc:dom.window.document,identity:{currentUid:()=> 'synthetic',subscribe:()=>()=>{}},client:{read:async()=>{requests++;return snapshot();}},pendingJournal:{read:async()=>null},services:{invoiceSealStore:{dispose(){}}},startApp:async({adapter})=>{await adapter.initialize();return{dispose(){}};}}),e=>safeStartupDiagnostic(e).stage==='FINAL');assert.equal(requests,1);assert.equal(dom.window.document.getElementById('google-app-root').hidden,true);dom.window.close();
+ const prepared=await startConnectedOriginalApp({doc:dom.window.document,identity:{currentUid:()=> 'synthetic',subscribe:()=>()=>{}},client:{read:async()=>{requests++;return snapshot();}},pendingJournal:{read:async()=>null},services:{invoiceSealStore:{dispose(){}}},startApp:async({adapter})=>{await adapter.initialize();return{dispose(){}};}});assert.equal(typeof prepared.assertCurrent,'function');prepared.dispose();assert.equal(requests,1);assert.equal(dom.window.document.getElementById('google-app-root').hidden,true);dom.window.close();
 });
 
 for(const code of ['NOT_CONFIGURED','ROSTER_NOT_CONFIGURED','ROSTER_INVALID','SOURCE_LIMIT','SOURCE_ID_INVALID','BILLING_SCHEMA_CHANGED','STORAGE_ACCESS_DENIED','STORAGE_MERGED_CELLS','WORKSPACE_COMMIT_OUTCOME_UNKNOWN','BAD_REQUEST']){
