@@ -1,5 +1,5 @@
-export const APP_VERSION = '0.5.27';
-export const RELEASE_CHANGES = ["起動失敗時の確認コードを追加。業務データや秘密情報は表示しない", "画面構成・保存・認証・読み込み完了までの待機を維持"];
+export const APP_VERSION = '0.5.28';
+export const RELEASE_CHANGES = ["画面への復帰時に読み込み状態を表示し、同じアカウントの再認証で編集中の内容を保持", "起動時と復帰時の重複した読み込みを削減。保存・出力時の最新確認と既存画面を維持"];
 // Update only application shell files. This module never reads or writes report storage.
 export function startUpdates({win=window,doc=document,guard=fn=>fn(),canReload=()=>true,reload=()=>win.location.reload(),recovery=false}={}) {
   let disposed=false;const removers=[];const listen=(target,type,fn)=>{if(!target||disposed)return;target.addEventListener(type,fn);removers.push(()=>target.removeEventListener(type,fn));};

@@ -18,7 +18,7 @@ if(adapter)await adapter.initialize();
 const mutations=adapter?.operations??D;
 const lifecycle=new window.AbortController();
 const listen=(target,type,handler,options={})=>target.addEventListener(type,handler,{...(typeof options==='boolean'?{capture:options}:options),signal:lifecycle.signal});
-let disposed=false,activated=false,assistDispose,updatesControl,invoiceSettings,invoiceOutput,browseSync,offAuth,suspendedDraft=false,visibilityEpoch=0;
+let disposed=false,activated=false,assistDispose,updatesControl,invoiceSettings,invoiceOutput,browseSync,offAuth,suspendedDraft=false,visibilityEpoch=0,revealPending=null,revealQueued=false,confirmedSnapshotKey=null,draftConflict=false,ownerUid=null,revealPrepared=false;
 const suspendedModals=createModalSuspension(document),staleViews=new Set();
 const root=document.getElementById('google-app-root');
 try {
@@ -53,7 +53,7 @@ function initialize(ready){
  }catch(error){recover(error);return;}finish();};
  try{const promise=navigator.locks?.request?navigator.locks.request(`${APP_STORAGE_KEY}:mutation`,perform):perform();promise?.catch(error=>{if(!finished)recover(error);});}catch(error){if(!finished)recover(error);}
 }
-async function mutate(operation,{render=true}={}){if(adapter){const result=await adapter.mutate(operation);state=result.state;if(!result.projectionCurrent){$('#global-error').hidden=false;$('#global-error').textContent='保存は完了しましたが、スプレッドシートの集計反映は未確認です。';}if(render)renderSecondary();return result;}const perform=()=>{if(storageFailed)throw new Error('保存を利用できません。');let fresh;try{fresh=read();if(!fresh)throw new Error('保存データが消去されました。再読み込みしてください。');}catch(e){fail(e);throw e;}state=fresh;const actor=demoSession.require(fresh);const result=operation(fresh,actor.id);try{localStorage.setItem(APP_STORAGE_KEY,JSON.stringify(result.state));}catch(e){fail(e);throw new Error('保存できませんでした。入力を残しています。');}state=result.state;if(render)renderSecondary();return result;};return navigator.locks?.request?navigator.locks.request(`${APP_STORAGE_KEY}:mutation`,perform):perform();}
+async function mutate(operation,{render=true}={}){if(adapter){if(draftConflict)throw Error('編集中に共有データが更新されました。入力を控えてから再読み込みして、変更内容を確認してください。');const result=await adapter.mutate(operation);confirmedSnapshotKey=adapter.snapshotKey();state=result.state;if(!result.projectionCurrent){$('#global-error').hidden=false;$('#global-error').textContent='保存は完了しましたが、スプレッドシートの集計反映は未確認です。';}if(render)renderSecondary();return result;}const perform=()=>{if(storageFailed)throw new Error('保存を利用できません。');let fresh;try{fresh=read();if(!fresh)throw new Error('保存データが消去されました。再読み込みしてください。');}catch(e){fail(e);throw e;}state=fresh;const actor=demoSession.require(fresh);const result=operation(fresh,actor.id);try{localStorage.setItem(APP_STORAGE_KEY,JSON.stringify(result.state));}catch(e){fail(e);throw new Error('保存できませんでした。入力を残しています。');}state=result.state;if(render)renderSecondary();return result;};return navigator.locks?.request?navigator.locks.request(`${APP_STORAGE_KEY}:mutation`,perform):perform();}
 function toast(msg){$('#toast').textContent=msg;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),5000);}
 function options(type,selected='',placeholder='選択してください',includeId=''){return `<option value="">${esc(placeholder)}</option>`+state.masters[type].filter(x=>x.active||x.id===includeId).map(x=>`<option value="${esc(x.id)}" ${x.id===selected?'selected':''}>${esc(D.displayName(state,type,x.id))}</option>`).join('');}
 function sessionAttribution(label='編集者'){const member=demoSession.current(state);return `<p class="session-attribution">${esc(label)} <strong data-demo-user-name>${esc(member?.name??'未選択')}</strong></p>`;}
@@ -334,7 +334,7 @@ function settingsHistoryHTML(e){
 listen($('#settings-help-toggle'),'click',()=>{const help=$('#settings-list-note');help.open=!help.open;$('#settings-help-toggle').setAttribute('aria-expanded',String(help.open));});
 listen($('#settings-list-note'),'toggle',()=>$('#settings-help-toggle').setAttribute('aria-expanded',String($('#settings-list-note').open)));
 function focusItemSettingsAction(id){setTimeout(()=>{if(currentPage==='settings'&&masterType==='items'&&!dialog.open&&!confirmDialog.open)$(id)?.focus();},0);}
-function renderSecondary(){renderSessionIdentity();renderBrowse();renderSettings();renderSummary();invoiceOutput?.refresh();}
+function renderSecondary({outputAuthority}={}){renderSessionIdentity();renderBrowse();renderSettings();renderSummary();if(adapter&&currentPage!=='output'){invoiceOutput?.invalidate?.();staleViews.add('output');}else if(outputAuthority)return invoiceOutput?.refreshPreparedSnapshot?.(outputAuthority);else return invoiceOutput?.refresh();}
 function switchPage(route){
  const changed=currentRoute!==route;if(changed){if(masterReorderMode)finishMasterReorder(false);resetMasterSelection();modalContext=null;priceContext=null;modalDirty=false;priceDirty=false;}
  const parts=String(route||'report').split('/');let page=parts[0];if(!pages[page]){page='report';route='report';}
@@ -343,6 +343,7 @@ function switchPage(route){
  if(page==='settings'){masterType=titles[parts[1]]?parts[1]:'members';try{selectedCustomerId=masterType==='customers'&&parts[2]?decodeURIComponent(parts[2]):null;}catch{selectedCustomerId=null;}customerSection=selectedCustomerId&&parts[3]==='prices'?'prices':null;renderSettings();}else priceContext=null;
  if(!selectedCustomerId&&(dialog.open||dialogOrigin))dismissDialog();
  sheetConnection?.setPage(page,parts[1]==='sheet'?'sheet':undefined);
+ if(adapter&&page==='output'&&changed&&invoiceOutput){void invoiceOutput.refresh();staleViews.delete('output');}
  if(staleViews.has(page)){if(page==='summary')renderSummary();if(page==='report'&&!reportDirty)renderReport();if(page==='output')void invoiceOutput?.refresh();if(page!=='report'||!reportDirty)staleViews.delete(page);}
  browseSync?.setContext({browse:page==='browse',visible:document.visibilityState!=='hidden',authorized:activated&&!root?.hidden});
 }
@@ -413,9 +414,9 @@ listen(window,'hashchange',()=>{const next=location.hash.slice(1);if(next===curr
 listen(window,'storage',e=>{if(adapter)return;if(e.key!==APP_STORAGE_KEY&&e.key!==null)return;try{const next=read();if(!next)throw new Error('別の操作で保存データが消えました。');state=next;renderSecondary();if(!reportDirty&&!pending)renderReport();toast('別の画面の更新を読み込みました。入力中の内容はそのままです。');ensureDemoSession();}catch(error){fail(error);}});
 sheetConnection=adapter?{setPage(){}}:(services.installSheetConnection??installSheetConnection)({doc:document});
 const appReady=new Promise((resolve,reject)=>{initialize(async()=>{try{$('#calculation-sample-banner').hidden=!IS_CALCULATION_SAMPLE;for(const selector of ['#desktop-nav','#mobile-nav'])$(selector).innerHTML=Object.entries(pages).map(([key,[label,icon]])=>`<button class="${selector==='#desktop-nav'?'nav-item':''}" data-nav="${key}"><span aria-hidden="true">${navIcon(key)}</span>${label}</button>`).join('');$('#browse-month').value=localDate().slice(0,7);renderReport();setPeriod('month');renderSecondary();switchPage(location.hash.slice(1));
-invoiceSettings=(services.installInvoiceSettings??installInvoiceSettings)({doc:document,storageKey:ISSUER_STORAGE_KEY,...(adapter?{store:adapter.invoiceSettingsStore,onSaveError:element=>appendWorkspaceRecovery({element,adapter,reload:()=>location.reload()})}:{}),onChange:()=>renderIssuerPanel()});
+invoiceSettings=(services.installInvoiceSettings??installInvoiceSettings)({doc:document,storageKey:ISSUER_STORAGE_KEY,...(adapter?{store:{...adapter.invoiceSettingsStore,...Object.fromEntries(['saveIssuer','saveBankAccounts','saveTax'].map(method=>[method,async(...args)=>{if(draftConflict)throw Error('編集中に共有データが更新されました。入力を控えてから再読み込みしてください。');return adapter.invoiceSettingsStore[method](...args);}]))},onSaveError:element=>appendWorkspaceRecovery({element,adapter,reload:()=>location.reload()})}:{}),onChange:()=>renderIssuerPanel()});
 renderSettings();
-invoiceOutput=(services.installInvoiceOutput??installInvoiceOutput)({doc:document,getState:()=>adapter?.referenceView?.().state??state,getInvoiceSettings:()=>invoiceSettings.getSettings(),storageKey:ISSUER_STORAGE_KEY,...(services.invoiceSealStore?{sealStore:services.invoiceSealStore}:{}),...(adapter?{validateOutput:async expected=>{await adapter.refresh();state=adapter.read();adapter.assertBillingReady();const key=adapter.snapshotKey();if(expected!==undefined&&key!==expected)throw Error('作成中に記録や設定が変更されました。作り直してください。');return key;}}:{})});
+invoiceOutput=(services.installInvoiceOutput??installInvoiceOutput)({doc:document,getState:()=>adapter?.referenceView?.().state??state,getInvoiceSettings:()=>invoiceSettings.getSettings(),storageKey:ISSUER_STORAGE_KEY,...(services.invoiceSealStore?{sealStore:services.invoiceSealStore}:{}),...(adapter?{coordinatedRestoration:true,prepareInitialOutput:()=>{state=adapter.read();adapter.assertBillingReady();return adapter.snapshotKey();},validateOutput:async expected=>{await adapter.refresh();state=adapter.read();adapter.assertBillingReady();const key=adapter.snapshotKey();if(expected!==undefined&&key!==expected)throw Error('作成中に記録や設定が変更されました。作り直してください。');return key;}}:{})});
 
 ensureDemoSession();
 try{await invoiceOutput.ready;}catch(error){throw markStartupFailure(error,'OUTPUT');}
@@ -424,7 +425,8 @@ resolve();
 }catch(error){reject(markStartupFailure(error,'UI'));}});});
 
 await appReady;
-function activate(){if(disposed||activated)return;activated=true;browseSync?.setContext({browse:currentPage==='browse',visible:document.visibilityState!=='hidden',authorized:true},{alreadyFresh:true});assistDispose=(services.installInputAssist??installInputAssist)({doc:document,win:window});updatesControl=(services.startUpdates??startUpdates)({doc:document,win:window,guard:discard,canReload:()=>!suspendedDraft&&!reportDirty&&!modalDirty&&!priceDirty&&!reorderDirty()&&!masterReorder?.dragging&&!pending&&!invoiceSettings?.isDirty()&&!invoiceSettings?.isBusy()});}
+if(adapter){confirmedSnapshotKey=adapter.snapshotKey();ownerUid=services.currentAccountUid?.()??null;}
+function activate(){if(disposed)return;if(activated){browseSync?.setContext({browse:currentPage==='browse',visible:document.visibilityState!=='hidden',authorized:true},{alreadyFresh:true});return;}activated=true;browseSync?.setContext({browse:currentPage==='browse',visible:document.visibilityState!=='hidden',authorized:true},{alreadyFresh:true});assistDispose=(services.installInputAssist??installInputAssist)({doc:document,win:window});updatesControl=(services.startUpdates??startUpdates)({doc:document,win:window,guard:discard,canReload:()=>!suspendedDraft&&!reportDirty&&!modalDirty&&!priceDirty&&!reorderDirty()&&!masterReorder?.dragging&&!pending&&!invoiceSettings?.isDirty()&&!invoiceSettings?.isBusy()});}
 function dispose(){if(disposed)return;disposed=true;offAuth?.();browseSync?.dispose();suspendedModals.dispose();lifecycle.abort();assistDispose?.();updatesControl?.dispose?.();invoiceSettings?.dispose?.();invoiceOutput?.destroy?.();clearTimeout(toastTimer);}
 if(adapter){
  const sidebar=$('.sidebar-note');if(sidebar){for(const node of sidebar.childNodes)if(node.nodeType===3&&node.textContent.includes('このブラウザ'))node.textContent='共有データへ保存';const note=sidebar.querySelector('p');if(note)note.textContent='ログインした登録メンバーで利用します。';}
@@ -433,14 +435,36 @@ if(adapter){
  const note=$('#browse-local > .form-note');if(note)note.textContent='共有された記録の確認、訂正、復元ができます。';
  browseSync=(services.createBrowseRecordSync??createBrowseRecordSync)({adapter,checkChanges:services.checkWorkspaceChanges,isEditing:()=>modalDirty||dialog.open||confirmDialog.open||priceDirty||invoiceSettings?.isDirty(),isSaving:()=>pending||invoiceSettings?.isBusy(),onApplied:next=>{state=next;for(const page of ['report','summary','settings','output'])staleViews.add(page);renderBrowse();renderSessionIdentity();},onConfirmed:()=>{if(note)note.textContent='共有された記録の確認、訂正、復元ができます。';},onError:error=>{if(['LOGIN_REQUIRED','UNAUTHENTICATED','FORBIDDEN','WORKSPACE_MEMBERSHIP_SYNC_REQUIRED'].includes(error.code)){conceal();showRecovery(error);}else if(note)note.textContent='最新の記録を確認できません。入力と表示中の内容を保持して再確認します。';}});
  listen(document,'visibilitychange',()=>{if(document.visibilityState==='hidden')conceal();else if(activated)void reveal();});
- offAuth=adapter.subscribeInvalidation(()=>{conceal();dispose();root?.replaceChildren();for(const d of document.querySelectorAll('dialog')){if(d.open)d.close();d.replaceChildren();}showRecovery(Error('ログイン状態が変わりました。再読み込みしてください。'));});
+ offAuth=adapter.subscribeInvalidation(()=>{conceal();const nextUid=services.currentAccountUid?.();if(nextUid&&ownerUid&&nextUid!==ownerUid){dispose();root?.replaceChildren();for(const d of document.querySelectorAll('dialog')){if(d.open)d.close();d.replaceChildren();}}showRecovery(Error('ログイン状態が変わりました。もう一度ログインを確認してください。'),{reauthenticate:true});});
  listen(window,'pagehide',conceal);listen(window,'pageshow',event=>{if(event.persisted&&activated)void reveal();});
 
 }
 if(!adapter)activate();
-function showRecovery(error){document.dispatchEvent(new window.CustomEvent('routenote-connection-error',{detail:{message:error.message,retry:reveal}}));}
-function conceal(){if(!adapter||disposed)return;visibilityEpoch++;adapter.invalidateReads();suspendedDraft=reportDirty||modalDirty||priceDirty||invoiceSettings?.isDirty()||suspendedDraft;browseSync?.setContext({visible:false,authorized:false});suspendedModals.suspend();if(root){root.hidden=true;root.inert=true;}}
-async function reveal(){if(!adapter||disposed||!activated)return;const generation=visibilityEpoch;try{await adapter.refresh({fresh:true});if(generation!==visibilityEpoch||disposed||document.visibilityState==='hidden')return;state=adapter.read();if(!reportDirty&&!pending)renderReport();if(!modalDirty&&!priceDirty&&!invoiceSettings?.isDirty()){renderSecondary();}for(const page of ['summary','settings','output'])staleViews.add(page);if(root){root.hidden=false;root.inert=false;}suspendedModals.resume();suspendedDraft=false;browseSync?.setContext({browse:currentPage==='browse',visible:true,authorized:true},{alreadyFresh:true});document.dispatchEvent(new window.CustomEvent('routenote-connection-restored'));}catch(error){if(generation!==visibilityEpoch)return;conceal();showRecovery(error);}}
-return{activate,dispose,reveal,getState:()=>D.clone(state)};
+function showRecovery(error,{reauthenticate=false}={}){document.dispatchEvent(new window.CustomEvent('routenote-connection-error',{detail:{message:error.message,retry:reveal,reauthenticate}}));}
+function conceal(){if(!adapter||disposed)return;visibilityEpoch++;adapter.invalidateReads();suspendedDraft=reportDirty||modalDirty||priceDirty||reorderDirty()||invoiceSettings?.isDirty()||suspendedDraft;browseSync?.setContext({visible:false,authorized:false});suspendedModals.suspend();if(root){root.hidden=true;root.inert=true;}}
+function reveal({expose=true}={}){
+ if(!adapter||disposed||(!activated&&expose)||document.visibilityState==='hidden')return Promise.resolve();
+ if(revealPending){revealQueued=true;return revealPending;}
+ const generation=visibilityEpoch;
+ if(expose)document.dispatchEvent(new window.CustomEvent('routenote-connection-loading'));
+ revealPending=(async()=>{try{
+  await adapter.refresh({fresh:true});
+  if(generation!==visibilityEpoch||disposed||document.visibilityState==='hidden')return;
+  const nextKey=adapter.snapshotKey();
+  if(suspendedDraft&&!pending&&confirmedSnapshotKey!==nextKey)draftConflict=true;
+  confirmedSnapshotKey=nextKey;state=adapter.read();if(!reportDirty&&!pending)renderReport();
+  if(!modalDirty&&!priceDirty&&!invoiceSettings?.isDirty()){const output=await renderSecondary({outputAuthority:currentPage==='output'?adapter.preparedAuthority():undefined});if(output?.error&&output.error.code!=='BILLING_NOT_READY')throw output.error;}else invoiceOutput?.invalidate?.();
+  if(generation!==visibilityEpoch||disposed||document.visibilityState==='hidden')return;adapter.read();
+  for(const page of ['summary','settings','output'])staleViews.add(page);
+  if(draftConflict){$('#global-error').hidden=false;$('#global-error').textContent='編集中に共有データが更新されました。入力は保持しています。保存せず、入力を控えてから再読み込みして変更内容を確認してください。';}
+  if(expose&&root){root.hidden=false;root.inert=false;}
+  if(expose)suspendedModals.resume();else revealPrepared=true;suspendedDraft=false;
+  browseSync?.setContext({browse:currentPage==='browse',visible:true,authorized:expose},{alreadyFresh:true});
+  if(expose)document.dispatchEvent(new window.CustomEvent('routenote-connection-restored'));
+ }catch(error){if(generation!==visibilityEpoch)return;conceal();if(expose)showRecovery(error);else throw error;}
+ })().finally(()=>{revealPending=null;const again=revealQueued&&generation!==visibilityEpoch;revealQueued=false;if(again&&!disposed&&document.visibilityState!=='hidden')return reveal({expose});});
+ return revealPending;
+}
+return{activate,dispose,reveal,completeReveal(){if(revealPrepared){revealPrepared=false;suspendedModals.resume();}},isDisposed:()=>disposed,getState:()=>D.clone(state)};
 }catch(error){lifecycle.abort();assistDispose?.();updatesControl?.dispose?.();invoiceSettings?.dispose?.();invoiceOutput?.destroy?.();throw error;}
 }

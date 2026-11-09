@@ -1,16 +1,17 @@
 import {safeStartupDiagnostic} from './workspace-client.js';
 // This UI gate is not server authorization. Every real-data API needs its own checks.
-export function createEntryGate({initialize, loadApp, online, show, open, prepare=()=>{}, close=()=>{}}) {
-  let session, unsubscribe, attempt=0, identityEpoch=0, observedUid=null, checking=false, started=false, loading=false;
+export function createEntryGate({initialize, loadApp, online, show, open, prepare=()=>{}, close=()=>{}, isVisible=()=>true, waitUntilVisible=async()=>{}}) {
+  let session, unsubscribe, attempt=0, identityEpoch=0, observedUid=null, checking=false, started=false, loading=false,visibilityVersion=0;
   const render = (message, canLogin=false, canRetry=true) => { if (!started) show({message,canLogin,canRetry}); };
   async function verify() {
     if (started || checking || !session?.state.user) return;
     if (!online()) { render('オンラインにして、もう一度確認してください。'); return; }
     const currentSession=session,currentAttempt=attempt,currentEpoch=identityEpoch,expectedUid=session.state.user.uid;
     const stillCurrent=()=>session===currentSession&&attempt===currentAttempt&&identityEpoch===currentEpoch&&session.state.status==='signed-in'&&session.state.user?.uid===expectedUid;
-    checking=true;let preparedApp;
+    checking=true;let preparedApp,retryVisible=false;const visibleVersion=visibilityVersion;
     render('Googleアカウントを確認しています…',false,false);
     try {
+      await waitUntilVisible();if(!stillCurrent())throw new Error('identity unavailable');
       const identity=await currentSession.verifyIdentity();
       if (!identity || identity.uid!==expectedUid || !stillCurrent() || !online()) throw new Error('identity unavailable');
       if (!loading) {
@@ -18,6 +19,8 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         render('画面を準備しています…',false,false);
         prepare();
         preparedApp=await loadApp();
+        let preparedVisibility=visibleVersion;
+        while(!isVisible()||preparedVisibility!==visibilityVersion){await waitUntilVisible();if(!stillCurrent())throw Object.assign(new Error('identity changed during preparation'),{code:'startup-session-changed'});const generation=visibilityVersion;await preparedApp?.reveal?.({expose:false});preparedVisibility=generation;}
         if(!stillCurrent()||!online())throw Object.assign(new Error('identity changed during preparation'),{code:'startup-session-changed'});
         open(preparedApp);
         started=true;
@@ -30,10 +33,12 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         'startup-seal':'社印の読み込みが完了しませんでした。ページを再読み込みしてください。（起動確認: SEAL）',
         'startup-storage':'端末内データの確認が完了しませんでした。データを削除せず、ページを再読み込みしてください。（起動確認: STORAGE）',
       };
+      retryVisible=wasLoading&&visibleVersion!==visibilityVersion&&stillCurrent();
       const diagnostic=safeStartupDiagnostic(error);
       render(messages[diagnostic.code] || (wasLoading ? `本体の読み込みに失敗しました。ページを再読み込みしてください。（起動確認: APP / ${diagnostic.stage} / ${diagnostic.code}）` : '本人確認が完了しませんでした。接続を確認して再試行してください。'));
     }
     finally { checking=false; }
+    if(retryVisible){render('画面を準備しています…',false,false);await waitUntilVisible();if(stillCurrent())return verify();}
   }
   return {
     async start() {
@@ -56,6 +61,8 @@ export function createEntryGate({initialize, loadApp, online, show, open, prepar
         });
       } catch { if(current===attempt) render('Googleログインを読み込めませんでした。接続を確認して再試行してください。'); }
     },
+    async restart(){started=false;loading=false;return this.start();},
+    visibilityChanged(visible){if(!visible)visibilityVersion++;},
     async signIn(){ if(!started && session && online()) await session.signIn(); },
     get started(){return started;},
   };
@@ -112,15 +119,19 @@ export function installEntrySurface({doc=document, initialize=async()=> (await i
   }
   const gate=createEntryGate({
     initialize, loadApp, online,
+    isVisible:()=>doc.visibilityState!=='hidden',
+    waitUntilVisible:()=>doc.visibilityState!=='hidden'?Promise.resolve():new Promise(resolve=>{const visible=()=>{if(doc.visibilityState==='hidden')return;doc.removeEventListener('visibilitychange',visible);resolve();};doc.addEventListener('visibilitychange',visible);}),
     show:({message,canLogin,canRetry})=>{entry.hidden=false;const busy=!canLogin&&!canRetry;const idle=canLogin&&message==='Googleアカウントでログインしてください。';activity.hidden=!busy;login.hidden=!canLogin;entry.setAttribute('aria-busy',String(busy));status.textContent=message;status.hidden=idle;login.disabled=!canLogin;retry.hidden=!canRetry||idle;reload.hidden=!canRetry||idle;if(!entry.contains(document.activeElement)){if(canLogin)login.focus();else if(canRetry)retry.focus();else{entry.tabIndex=-1;entry.focus();}}},
     prepare:()=>{root.hidden=true;root.inert=true;holdDialogs();},
     close:()=>{releaseDialogs(false);root.hidden=true;root.inert=true;entry.hidden=false;},
-    open:app=>{app?.activate?.();root.hidden=false;entry.hidden=true;entry.setAttribute('aria-busy','false');activity.hidden=true;root.inert=false;releaseDialogs(true);},
+    open:app=>{app?.activate?.();root.hidden=false;entry.hidden=true;entry.setAttribute('aria-busy','false');activity.hidden=true;root.inert=false;releaseDialogs(true);app?.completeReveal?.();},
   });
+  doc.addEventListener('visibilitychange',()=>gate.visibilityChanged(doc.visibilityState!=='hidden'));
   login.addEventListener('click',()=>void gate.signIn());
   let recovery=null;
   retry.addEventListener('click',()=>{if(recovery){retry.hidden=true;reload.hidden=true;activity.hidden=false;void Promise.resolve(recovery()).catch(()=>{activity.hidden=true;retry.hidden=false;reload.hidden=false;});}else void gate.start();});
-  doc.addEventListener('routenote-connection-error',event=>{recovery=event.detail?.retry;root.hidden=true;root.inert=true;entry.hidden=false;activity.hidden=true;login.hidden=true;status.hidden=false;status.textContent=event.detail?.message||'接続を確認してください。';retry.hidden=false;reload.hidden=false;entry.setAttribute('aria-busy','false');});
+  doc.addEventListener('routenote-connection-error',event=>{recovery=event.detail?.reauthenticate?()=>{recovery=null;return gate.restart();}:event.detail?.retry;root.hidden=true;root.inert=true;entry.hidden=false;activity.hidden=true;login.hidden=true;status.hidden=false;status.textContent=event.detail?.message||'接続を確認してください。';retry.hidden=false;reload.hidden=false;entry.setAttribute('aria-busy','false');});
+  doc.addEventListener('routenote-connection-loading',()=>{root.hidden=true;root.inert=true;entry.hidden=false;activity.hidden=false;login.hidden=true;status.hidden=false;status.textContent='画面を準備しています…';retry.hidden=true;reload.hidden=true;entry.setAttribute('aria-busy','true');});
   doc.addEventListener('routenote-connection-restored',()=>{recovery=null;entry.hidden=true;activity.hidden=true;});
   void gate.start();
   return {gate,entry,root};
