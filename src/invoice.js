@@ -135,13 +135,16 @@ export function renderInvoiceOutput(state, selection = {}, invoiceSettings = emp
     <div id="invoice-preview" aria-live="polite">${previewHTML(view)}</div>`;
 }
 
-export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF, prepareSeal = prepareInvoiceSeal, loadDefaultSeal = loadDefaultInvoiceSeal, sealStore, storageKey = INVOICE_SETTINGS_KEY, getInvoiceSettings = () => readInvoiceSettings(doc.defaultView.localStorage, storageKey).settings, validateOutput=null } = {}) {
+export function installInvoiceOutput({ doc = document, getState, print = () => doc.defaultView.print(), createPDF = createInvoicePDF, savePDF, prepareSeal = prepareInvoiceSeal, loadDefaultSeal = loadDefaultInvoiceSeal, sealStore, storageKey = INVOICE_SETTINGS_KEY, getInvoiceSettings = () => readInvoiceSettings(doc.defaultView.localStorage, storageKey).settings, validateOutput=null, prepareInitialOutput=null, coordinatedRestoration=false } = {}) {
   const host = doc.querySelector('#output-section');
   if (!host) throw new Error('出力画面が見つかりません。');
   const win = doc.defaultView, printMedia = win.matchMedia?.('print');
   // Initial UI preference only: later explicit ON/OFF selections are retained.
   // No persisted enclosure setting exists, and report/issuer storage is untouched.
-  let previewEpoch=0,authoritySnapshot=null,authorizedPrint=false,authorizedDownload=false;
+  let previewEpoch=0,authoritySnapshot=null,authorizedPrint=false,authorizedDownload=false,previewLoading=false,previewValidated=!validateOutput;
+  // Only the initial hidden preparation may reuse the authenticated startup snapshot.
+  // Normal refresh/output and page restoration always require fresh validation.
+  let initialPreparation=Boolean(validateOutput&&prepareInitialOutput),sealNeedsReload=false,restoringSeal=false,sealRestorePromise=Promise.resolve();
   let selection = { includeMonthlyDetail: true }, disposed = false, busy = false, revision = 0, generated = null;
   const downloadURLs = new Map();
   let sealIsDefault = false, sealError = '';
@@ -171,7 +174,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   function replaceSeal(value, persisted = false, isDefault = false) {
     const next = validateCanonicalSeal(value); if (!next) throw new Error('社印を読み込めません。');
     seal = next; sealPersisted = persisted; sealIsDefault = isDefault; sealError = ''; sealRevision++;
-    refresh();
+    if(!initialPreparation&&!restoringSeal)refresh();
   }
   async function loadSavedSeal() {
     const token = ++sealOperation; sealLoading = true; setSealBusy(true);
@@ -188,7 +191,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
         if (!disposed && token === sealOperation) replaceSeal(standard, false, true);
       }
     } catch {
-      if (!disposed && token === sealOperation) { refresh(); showSealError('標準の社印を読み込めません。再読み込みするか、透過PNGを選んでください。PDFはまだ作成できません。'); }
+      if (!disposed && token === sealOperation) { if(!initialPreparation&&!restoringSeal)refresh(); showSealError('標準の社印を読み込めません。再読み込みするか、透過PNGを選んでください。PDFはまだ作成できません。'); }
     } finally {
       // A pagehide invalidates the old load. Its completion must not permanently
       // reject startup; the restored page's load owns the readiness result.
@@ -264,7 +267,7 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   function setBusy(value) {
     busy = value;
     const count = (() => { try { return build(controlsSelection()).count; } catch { return 0; } })();
-    for (const id of ['invoice-download', 'invoice-print']) { const button = host.querySelector(`#${id}`); if (button) button.disabled = value || sealBusy || !seal || !count; }
+    for (const id of ['invoice-download', 'invoice-print']) { const button = host.querySelector(`#${id}`); if (button) button.disabled = value || previewLoading || !previewValidated || sealBusy || !seal || !count; }
     const button = host.querySelector('#invoice-download'); if (button) { button.textContent = value ? 'PDFを作成中…' : 'PDFをダウンロード'; button.setAttribute('aria-busy', String(value)); }
   }
   function renderNow() {
@@ -281,15 +284,36 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
     if (sealError) showSealError(sealError);
     if (error) showError(error.message || '自社情報・請求先住所を読み取れません。', true);
   }
+  function invalidate() {
+    if(disposed)return;previewEpoch++;authoritySnapshot=null;previewValidated=!validateOutput;retireGenerated();revision++;
+    if(validateOutput){host.querySelector('#invoice-preview')?.replaceChildren();setBusy(busy);}
+  }
   function refresh() {
-    if(!validateOutput)return renderNow();
-    const request=++previewEpoch;retireGenerated();
+    initialPreparation=false;
+    if(validateOutput&&host.hidden){invalidate();return Promise.resolve({ok:true,deferred:true});}
+    return refreshValidated(validateOutput);
+  }
+  async function refreshPreparedSnapshot(authority) {
+    initialPreparation=false;invalidate();restoreSeal();const request=previewEpoch;
+    await sealRestorePromise;
+    if(disposed||request!==previewEpoch||doc.visibilityState==='hidden'||host.hidden)return {error:Error('帳票の確認が更新されました。')};
+    if(sealError||sealStorageWarning||!seal)return {error:Object.assign(Error('社印の準備が完了しませんでした。'),{code:'startup-seal'})};
+    if(!validateOutput||!coordinatedRestoration||typeof authority?.consume!=='function')return {error:Error('帳票の確認が更新されました。')};
+    return refreshValidated(()=>authority.consume());
+  }
+  function refreshValidated(validate) {
+    if(!validate)return renderNow();
+    invalidate();const request=previewEpoch;previewLoading=true;setBusy(busy);
+    const pendingView=host.querySelector('#invoice-preview');if(pendingView)pendingView.textContent='最新の記録を確認しています…';
     return (async()=>{try{
       if(disposed||doc.visibilityState==='hidden')throw Error('画面に戻って再試行してください。');
-      const authority=await validateOutput();
+      const validation=validate();
+      // A prepared one-shot authority is synchronous: do not yield between its
+      // UID/epoch/key check and rendering the corresponding in-memory snapshot.
+      const authority=validation&&typeof validation.then==='function'?await validation:validation;
       if(disposed||request!==previewEpoch||doc.visibilityState==='hidden')throw Error('帳票の確認が更新されました。');
-      authoritySnapshot=authority;renderNow();return{ok:true};
-    }catch(error){if(!disposed&&request===previewEpoch){renderNow();showError(error.message,true);}return{error};}})();
+      authoritySnapshot=authority;previewValidated=true;renderNow();return{ok:true};
+    }catch(error){if(!disposed&&request===previewEpoch){previewValidated=false;renderNow();showError(error.message,true);}return{error};}finally{if(!disposed&&request===previewEpoch){previewLoading=false;setBusy(busy);}}})();
   }
   function showError(message, invalid = false) {
     const error = host.querySelector('#invoice-error'); if (!error) return;
@@ -372,14 +396,15 @@ export function installInvoiceOutput({ doc = document, getState, print = () => d
   host.addEventListener('input', updateIssueDateLabel); host.addEventListener('change', change); host.addEventListener('click', click);
   win.addEventListener('beforeprint', beforePrint); win.addEventListener('afterprint', finishPrint);
   printMedia?.addEventListener('change', printMediaChange);
-  const clearSealMemory = () => { sealOperation++; seal = null; sealIsDefault = false; sealError = ''; sealPersisted = false; sealRevision++; sealBusy = true; sealLoading = true; retireGenerated(); host.querySelectorAll('[data-invoice-seal]').forEach(element => element.remove()); const input = host.querySelector('#invoice-seal-file'); if (input) input.value = ''; setSealBusy(true); };
-  const pageShow = event => { if (event.persisted && !disposed) { refresh(); void loadSavedSeal(); } };
+  const clearSealMemory = () => { initialPreparation=false;sealNeedsReload=true;sealOperation++; seal = null; sealIsDefault = false; sealError = ''; sealPersisted = false; sealRevision++; sealBusy = true; sealLoading = true; retireGenerated(); host.querySelectorAll('[data-invoice-seal]').forEach(element => element.remove()); const input = host.querySelector('#invoice-seal-file'); if (input) input.value = ''; setSealBusy(true); };
+  const restoreSeal = () => { if (!disposed && sealNeedsReload && doc.visibilityState!=='hidden') { sealNeedsReload=false;restoringSeal=Boolean(validateOutput&&coordinatedRestoration);if(restoringSeal)invalidate();else refresh();sealRestorePromise=loadSavedSeal().finally(()=>{restoringSeal=false;}); } };
+  const pageShow = () => restoreSeal();
   win.addEventListener('pagehide', clearSealMemory); win.addEventListener('pageshow', pageShow);
   if(!validateOutput)refresh();
-  const cloudHidden=()=>{if(validateOutput&&doc.visibilityState==='hidden'){previewEpoch++;retireGenerated();finishPrint();host.querySelector('#invoice-preview')?.replaceChildren();}};
+  const cloudHidden=()=>{if(doc.visibilityState!=='hidden')restoreSeal();if(validateOutput&&doc.visibilityState==='hidden'){previewEpoch++;retireGenerated();finishPrint();host.querySelector('#invoice-preview')?.replaceChildren();}};
   doc.addEventListener('visibilitychange',cloudHidden);
-  const ready=(async()=>{await sealReady;if(validateOutput){const result=await refresh();if(!result?.ok&&result?.error?.code!=='BILLING_NOT_READY')throw result?.error||Error('帳票の準備が完了しませんでした。');}})();void ready.catch(()=>{});
+  const ready=(async()=>{try{await sealReady;if(validateOutput){const validate=initialPreparation?prepareInitialOutput:validateOutput;initialPreparation=false;const result=await refreshValidated(validate);if(!result?.ok&&result?.error?.code!=='BILLING_NOT_READY')throw result?.error||Error('帳票の準備が完了しませんでした。');}}finally{initialPreparation=false;}})();void ready.catch(()=>{});
   void loadSavedSeal();
-  return { ready, refresh, destroy() { doc.removeEventListener('visibilitychange',cloudHidden);previewEpoch++;rejectReady(Object.assign(new Error('起動準備が終了しました。'),{code:'startup-seal'})); disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
+  return { ready, refresh, refreshPreparedSnapshot, invalidate, destroy() { doc.removeEventListener('visibilitychange',cloudHidden);previewEpoch++;rejectReady(Object.assign(new Error('起動準備が終了しました。'),{code:'startup-seal'})); disposed = true; revision++; clearSealMemory(); win.removeEventListener('pagehide', clearSealMemory); win.removeEventListener('pageshow', pageShow); doc.removeEventListener('invoice-settings-change', settingsChanged); win.removeEventListener('storage', storageChanged); finishPrint(); retireGenerated(); host.removeEventListener('input', updateIssueDateLabel); host.removeEventListener('change', change); host.removeEventListener('click', click); win.removeEventListener('beforeprint', beforePrint); win.removeEventListener('afterprint', finishPrint); printMedia?.removeEventListener('change', printMediaChange); } };
 }
 
