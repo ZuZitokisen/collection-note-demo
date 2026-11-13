@@ -1,5 +1,6 @@
 // Public Firebase web app configuration. This is not a server credential.
-import { createGoogleSession, publicIdentity } from './google-session.js';
+import { createGoogleSession } from './google-session.js';
+import { createIdentityVerifier } from './identity-verifier.js';
 const config = {
   apiKey: 'AIzaSyBcjwDYX1YjPXMRYx6ZOI6H0lX26qc8L8w',
   authDomain: 'routenote-38b82.firebaseapp.com',
@@ -17,12 +18,13 @@ async function googleRuntime() {
   const app = appSDK.getApps().find(app=>app.name==='routenote-auth') ?? appSDK.initializeApp(config,'routenote-auth');
   const auth = sdk.getAuth(app);
   auth.languageCode = 'ja';
-  return {auth,sdk};
+  const verifier = createIdentityVerifier({auth,sdk,online:()=>globalThis.navigator?.onLine===true});
+  return {auth,sdk,verifier};
  })().catch(error=>{runtimePromise=null;throw error;});
  return runtimePromise;
 }
 export async function initializeGoogleSession() {
-  const {auth,sdk}=await googleRuntime();
+  const {auth,sdk,verifier}=await googleRuntime();
   // Session-scoped persistence. Never copy tokens into app storage or logs.
   await sdk.setPersistence(auth, sdk.browserSessionPersistence);
   const provider = new sdk.GoogleAuthProvider();
@@ -33,11 +35,8 @@ export async function initializeGoogleSession() {
     signOut: () => sdk.signOut(auth),
   });
   session.verifyIdentity = async () => {
-    const user = auth.currentUser;
-    if (!user) return null;
-    await sdk.reload(user);
-    await sdk.getIdToken(user, true);
-    return auth.currentUser?.uid === user.uid ? publicIdentity(user) : null;
+    if (!auth.currentUser) return null;
+    return (await verifier.verify()).identity;
   };
   return session;
 }
@@ -45,21 +44,15 @@ export async function initializeGoogleSession() {
 // The token stays in memory and is sent only to the configured reports API.
 // This is not an authorization decision; the server verifies membership on every call.
 export async function googleApiIdentity() {
- const {auth,sdk}=await googleRuntime();
- return createApiIdentity({auth,sdk,online:()=>globalThis.navigator?.onLine===true});
+ const {auth,sdk,verifier}=await googleRuntime();
+ return createApiIdentity({auth,sdk,online:()=>globalThis.navigator?.onLine===true,verifier});
 }
-export function createApiIdentity({auth,sdk,online}) {
+export function createApiIdentity({auth,sdk,online,verifier=createIdentityVerifier({auth,sdk,online})}) {
  return {
   currentUid:()=>auth.currentUser?.uid??null,
   subscribe:listener=>sdk.onAuthStateChanged(auth,user=>listener(user?.uid??null),()=>listener(null)),
   async getIdToken(){
-   if(!online())throw new Error('LOGIN_REQUIRED');
-   const user=auth.currentUser;
-   if(!user||!user.providerData.some(provider=>provider.providerId==='google.com'))throw new Error('LOGIN_REQUIRED');
-   await sdk.reload(user);
-   const token=await sdk.getIdToken(user,true);
-   if(auth.currentUser?.uid!==user.uid)throw new Error('LOGIN_REQUIRED');
-   return token;
+   return (await verifier.verify()).token;
   },
  };
 }

@@ -6,4 +6,6 @@ export function createApplicationEntry({doc=globalThis.document,config=WORKSPACE
  return createConnectionEntry({...options,doc,enabled:config.enabled&&!isLocalMode(doc.defaultView.location.search),endpoint:config.endpoint});
 }
 let loader;
-export function loadApp(){loader??=createApplicationEntry();return loader();}
+export function loadApp(options){loader??=createApplicationEntry();return loader(options);}
+export function prepareApp(options){loader??=createApplicationEntry();return loader.prepare(options);}
+export async function preloadPublicAssets(doc){const {preloadDefaultInvoiceSeal}=await import('./invoice-seal.js');return preloadDefaultInvoiceSeal(doc);}
