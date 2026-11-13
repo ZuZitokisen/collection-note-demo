@@ -112,9 +112,18 @@ export async function prepareInvoiceSeal(file, doc = globalThis.document) {
     image.onload = image.onerror = null; image.src = '';
   }
 }
+const publicSealPreloads=new WeakMap();
+export function preloadDefaultInvoiceSeal(doc=globalThis.document){
+ if(!publicSealPreloads.has(doc)){const pending=readDefaultInvoiceSeal(doc);publicSealPreloads.set(doc,pending);void pending.catch(()=>{if(publicSealPreloads.get(doc)===pending)publicSealPreloads.delete(doc);});}
+ return publicSealPreloads.get(doc);
+}
+export async function loadDefaultInvoiceSeal(doc=globalThis.document,...options){
+ const ready=options.length===0?publicSealPreloads.get(doc):null;
+ return ready?structuredClone(await ready):readDefaultInvoiceSeal(doc,...options);
+}
 // A single public, low-resolution asset is allowlisted. Never persist it into
 // the private override store, accept redirects, or bypass raster validation.
-export async function loadDefaultInvoiceSeal(doc = globalThis.document, fetcher = doc?.defaultView?.fetch?.bind(doc.defaultView) ?? globalThis.fetch, prepare = null) {
+async function readDefaultInvoiceSeal(doc = globalThis.document, fetcher = doc?.defaultView?.fetch?.bind(doc.defaultView) ?? globalThis.fetch, prepare = null) {
   const location = doc?.defaultView?.location;
   if (!location || !['http:', 'https:'].includes(location.protocol) || !fetcher) throw new InvoiceSealError('標準の社印を読み込めません。', 'default-unavailable');
   const url = new URL('./icons/invoice-seal-lowres.png', location.href);
